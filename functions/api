@@ -1,0 +1,52 @@
+/**
+ * SIPKS — Cloudflare Pages Function: /api
+ * Google Apps Script remains the backend; Google Spreadsheet remains the database.
+ * Configure Pages variable GAS_WEB_APP_URL with the Apps Script Web App URL ending /exec.
+ */
+const ALLOWED_ACTIONS = new Set([
+  'login', 'register', 'req_otp', 'reset_pass',
+  'get_dashboard', 'get_data', 'insert_data', 'update_data', 'delete_data'
+]);
+
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0' }
+  });
+}
+
+export async function onRequest({ request, env }) {
+  if (request.method === 'GET') {
+    const configured = Boolean(String(env.GAS_WEB_APP_URL || '').trim());
+    return json({ status: true, message: 'SIPKS Pages API aktif.', data: { online: true, configured } });
+  }
+  if (request.method !== 'POST') return json({ status: false, message: 'Metode tidak diizinkan.', data: null }, 405);
+
+  const gasUrl = String(env.GAS_WEB_APP_URL || '').trim();
+  if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(gasUrl)) {
+    return json({ status: false, message: 'GAS_WEB_APP_URL belum benar. Masukkan URL Web App Apps Script yang berakhir /exec.', data: null }, 500);
+  }
+
+  let body;
+  try { body = await request.json(); }
+  catch (_) { return json({ status: false, message: 'Body permintaan harus berupa JSON valid.', data: null }, 400); }
+  if (!body || !ALLOWED_ACTIONS.has(String(body.action || ''))) {
+    return json({ status: false, message: 'Aksi API tidak diizinkan.', data: null }, 403);
+  }
+
+  try {
+    const upstream = await fetch(gasUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(body),
+      redirect: 'follow'
+    });
+    const raw = await upstream.text();
+    let result;
+    try { result = JSON.parse(raw); }
+    catch (_) { return json({ status: false, message: 'Apps Script mengembalikan respons bukan JSON. Periksa deployment Web App dan aksesnya.', data: null }, 502); }
+    return json(result, upstream.ok ? 200 : 502);
+  } catch (_) {
+    return json({ status: false, message: 'Tidak dapat terhubung ke backend Google Apps Script.', data: null }, 502);
+  }
+}
