@@ -26,13 +26,14 @@
     }
     
     /* Premium Luxury Glassmorphism & Shadow */
+    /* Form autentikasi transparan: menyatu dengan latar cream halaman */
     .login-card {
-      background: rgba(255, 255, 255, 0.85);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-      border: 1px solid #E7DCC7;
-      border-radius: 24px;
-      box-shadow: 0 10px 40px rgba(200, 150, 46, 0.08);
+      background: transparent !important;
+      backdrop-filter: none !important;
+      -webkit-backdrop-filter: none !important;
+      border: 0 !important;
+      border-radius: 0 !important;
+      box-shadow: none !important;
     }
     
     /* Retina Optimized SVG Logo Container */
@@ -149,8 +150,43 @@
     html, body { width: 100%; max-width: 100%; min-height: 100%; }
     body { min-height: 100vh; min-height: 100dvh; }
     #app { min-width: 0; min-height: 100vh; min-height: 100dvh; }
-    .auth-screen { min-height: 100vh; min-height: 100dvh; width: 100%; }
-    .auth-stage { min-height: calc(100vh - 56px); min-height: calc(100dvh - 56px); }
+    .auth-screen {
+      min-height: 100vh;
+      min-height: 100dvh;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center !important;
+      padding: max(1rem, env(safe-area-inset-top)) 1rem max(1rem, env(safe-area-inset-bottom));
+    }
+    .auth-stage {
+      width: 100%;
+      min-height: 0 !important;
+      flex: 0 1 auto !important;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 !important;
+    }
+    .auth-panel {
+      width: 100%;
+      max-width: 28rem;
+      margin: 0 auto;
+      padding: 1.25rem 1.5rem !important;
+      background: transparent !important;
+      border: 0 !important;
+      border-radius: 0 !important;
+      box-shadow: none !important;
+    }
+    .auth-footer {
+      width: fit-content;
+      max-width: 100%;
+      margin: 1rem auto 0;
+      padding: .65rem .9rem !important;
+      border-radius: 10px;
+      background: rgba(46, 46, 46, .92);
+    }
     .sipks-sidebar { height: 100vh; height: 100dvh; max-height: 100vh; max-height: 100dvh; }
     .sipks-sidebar-nav { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
     .sipks-sidebar-footer { flex: 0 0 auto; margin-top: auto; padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
@@ -162,14 +198,14 @@
     body.sipks-drawer-open { overflow: hidden; }
     @media (max-width: 767px) {
       body { font-size: 14px; }
-      .auth-screen { justify-content: flex-start; }
-      .auth-stage { width: 100%; flex: 1 0 auto; padding: max(1.25rem, env(safe-area-inset-top)) 0 1.25rem !important; }
-      .auth-panel { width: 100%; max-width: none; min-height: calc(100dvh - 56px - env(safe-area-inset-top)); padding: 1.5rem 1.25rem !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; background: rgba(255,255,255,.58) !important; }
+      .auth-screen { justify-content: center !important; padding-left: 1rem; padding-right: 1rem; }
+      .auth-stage { width: 100%; flex: 0 1 auto !important; padding: 0 !important; }
+      .auth-panel { width: 100%; max-width: 28rem; min-height: 0 !important; padding: 1rem .25rem !important; background: transparent !important; }
       .auth-panel .logo-container { width: 112px; max-width: 112px; }
-      .auth-panel .text-center.mb-8 { margin-bottom: 1.5rem; }
+      .auth-panel .text-center.mb-8 { margin-bottom: 1.25rem; }
       .auth-panel input { min-height: 46px; font-size: 16px; }
       .auth-panel .grid.grid-cols-2 { grid-template-columns: minmax(0, 1fr); gap: .75rem; }
-      .auth-footer { padding-bottom: max(.85rem, env(safe-area-inset-bottom)); }
+      .auth-footer { margin-top: 1rem; padding: .65rem .75rem !important; }
       #app { overflow-x: clip; }
       .sipks-main { width: 100%; min-width: 0; min-height: 100dvh; }
       .sipks-content { min-width: 0; overflow-x: auto; }
@@ -324,9 +360,9 @@
       const app = document.getElementById('app');
 
       app.innerHTML = `
-        <div class="auth-screen w-full min-h-screen flex flex-col justify-between">
-          <div class="auth-stage flex-1 w-full flex items-center justify-center p-4 py-10">
-            <div class="login-card auth-panel w-full max-w-md p-8 page-transition mx-auto relative">
+        <div class="auth-screen w-full min-h-screen flex flex-col items-center justify-center">
+          <div class="auth-stage w-full flex items-center justify-center">
+            <div class="login-card auth-panel w-full max-w-md page-transition mx-auto relative">
               <div class="text-center mb-8">
                 <div class="logo-container mb-4">
                   ${logoSvg}
@@ -400,12 +436,11 @@
                   <p class="text-center mt-6 text-sm text-[#707070]"><a href="javascript:void(0)" onclick="renderAuth('forgot')" class="text-[#C8962E] font-semibold hover:underline transition">Minta Ulang OTP</a></p>
                  </form>
               `}
+              <footer class="auth-footer text-center">
+                <p class="text-white text-[11px] sm:text-xs font-medium tracking-wide">© 2026 PT. Cipta Karya Palma. All Rights Reserved.</p>
+              </footer>
             </div>
           </div>
-          
-          <footer class="auth-footer w-full py-4 text-center bg-[#2E2E2E]">
-            <p class="text-white text-xs sm:text-sm font-medium tracking-wide">© 2026 PT. Cipta Karya Palma . All Rights Reserved.</p>
-          </footer>
         </div>
       `;
     }
