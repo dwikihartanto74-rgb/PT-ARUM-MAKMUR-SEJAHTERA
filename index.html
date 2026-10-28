@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SIPKS - PT. Cipta Karya Palma</title>
+  
+  <!-- CDN Dependencies -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&display=swap');
+    
+    body {
+      font-family: 'Poppins', sans-serif;
+      background: linear-gradient(180deg, #F8F3E8, #EFE6D4);
+      color: #2E2E2E;
+      overflow-x: hidden;
+      min-height: 100vh;
+    }
+    
+    /* Premium Luxury Glassmorphism & Shadow */
+    .login-card {
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid #E7DCC7;
+      border-radius: 24px;
+      box-shadow: 0 10px 40px rgba(200, 150, 46, 0.08);
+    }
+    
+    /* Retina Optimized SVG Logo Container */
+    .logo-container {
+      width: 140px;
+      max-width: 140px;
+      height: auto;
+      margin: 0 auto;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .logo-container svg {
+      width: 100%;
+      height: auto;
+    }
+    
+    .luxury-input {
+      background: #FFFFFF;
+      border: 1px solid #E7DCC7;
+      color: #2E2E2E;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    .luxury-input::placeholder {
+      color: #707070;
+    }
+    
+    .luxury-input:focus {
+      outline: none;
+      border-color: #C8962E;
+      box-shadow: 0 0 0 3px rgba(200, 150, 46, 0.15);
+      background: #FFFFFF;
+    }
+    
+    /* Gradient Gold Luxury Button */
+    .btn-login {
+      background: linear-gradient(90deg, #C8962E, #D8B867);
+      color: #FFFFFF;
+      border-radius: 9999px;
+      box-shadow: 0 4px 15px rgba(200, 150, 46, 0.3);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      border: none;
+    }
+    
+    .btn-login:hover {
+      box-shadow: 0 6px 20px rgba(200, 150, 46, 0.4);
+      transform: translateY(-2px);
+    }
+
+    /* General Panel Elements */
+    .glass {
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid #E7DCC7;
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.03);
+    }
+    
+    .glass-input {
+      background: rgba(255, 255, 255, 0.9);
+      border: 1px solid #E7DCC7;
+      color: #2E2E2E;
+    }
+    .glass-input:focus { 
+      outline: none; 
+      border-color: #C8962E; 
+      background: #FFFFFF; 
+    }
+    
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar { width: 8px; height: 8px;}
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #D8B867; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #C8962E; }
+    
+    /* Premium Loading Ring */
+    .loader { 
+      border: 4px solid rgba(200, 150, 46, 0.2);
+      border-left-color: #C8962E; 
+      border-radius: 50%; 
+      width: 40px; 
+      height: 40px; 
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { 
+      0% { transform: rotate(0deg); } 
+      100% { transform: rotate(360deg); } 
+    }
+    
+    .page-transition { animation: fadeIn 0.4s ease-in-out; }
+    @keyframes fadeIn { 
+      from { opacity: 0; transform: translateY(10px); } 
+      to { opacity: 1; transform: translateY(0); } 
+    }
+    
+    th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #E7DCC7; }
+    th { background-color: rgba(200, 150, 46, 0.1); font-weight: 600; text-transform: uppercase; font-size: 0.85rem; color: #2E2E2E; }
+    tr:hover { background-color: rgba(200, 150, 46, 0.05); }
+
+    .skeleton {
+      background: linear-gradient(90deg, rgba(200,150,46,0.05) 25%, rgba(200,150,46,0.1) 50%, rgba(200,150,46,0.05) 75%);
+      background-size: 200% 100%;
+      animation: skeletonLoading 1.5s infinite;
+      border-radius: 4px;
+    }
+    @keyframes skeletonLoading {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+  </style>
+</head>
+<body class="antialiased min-h-screen flex text-sm sm:text-base">
+
+  <!-- GLOBAL OVERLAY LOADING -->
+  <div id="global-loader" class="fixed inset-0 bg-[#2E2E2E]/90 backdrop-blur-sm z-50 flex flex-col items-center justify-center hidden">
+    <div class="loader mb-4"></div>
+    <p class="text-[#D8B867] font-medium tracking-wider animate-pulse">Memproses Data...</p>
+  </div>
+
+  <!-- CONTAINER UTAMA SPA -->
+  <div id="app" class="w-full min-h-screen flex"></div>
+
+  <!-- SCRIPT LOGIC (SPA CONTROLLER) -->
+  <script>
+    /*========================================================================
+      STATE MANAGEMENT & API WRAPPER
+    ========================================================================*/
+    const AppState = {
+      user: null,
+      token: localStorage.getItem('sipks_token') || null,
+      currentView: 'dashboard'
+    };
+
+    // Vector Logo SVG (Retina Ready, No Blur)
+    const logoSvg = `
+      <svg viewBox="0 0 600 350" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M400 135 C380 90, 240 90, 200 135 C160 180, 180 250, 250 250 L400 250" stroke="#1B2D4A" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M300 250 L300 110 L400 110 C460 110, 460 180, 400 180 L300 180 L420 250" stroke="#C8962E" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M220 230 L220 190 M235 230 L235 170 M250 230 L250 150 M265 230 L265 130" stroke="#C8962E" stroke-width="12" stroke-linecap="round"/>
+      </svg>
+    `;
+
+    // API bridge: Cloudflare Pages Function (/api) meneruskan request ke Google Apps Script.
+    // Jalur ini tetap memakai apiController yang sama agar aturan login/role/CRUD tidak berubah.
+    const apiCall = async (action, table = null, payload = null, options = {}) => {
+      if (!options.silent) showLoader();
+      try {
+        const response = await fetch('/api', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: AppState.token, action, table, payload })
+        });
+        const raw = await response.text();
+        let res;
+        try { res = JSON.parse(raw); }
+        catch (_) { throw new Error('Respons API bukan JSON. Periksa doPost Apps Script dan deployment backend.'); }
+        if (!response.ok) throw new Error(res.message || `Permintaan API gagal (${response.status}).`);
+        if (!res || typeof res.status !== 'boolean') throw new Error('Respons server tidak valid. Periksa endpoint /api.');
+        if (res.data && res.data.logout) {
+          doLogout();
+          throw new Error(res.message || 'Sesi berakhir. Silakan login kembali.');
+        }
+        if (!res.status) throw new Error(res.message || 'Permintaan tidak berhasil.');
+        return res.data !== null && res.data !== undefined ? res.data : res.message;
+      } catch (err) {
+        throw (err instanceof Error ? err : new Error(String(err || 'Terjadi kesalahan saat menghubungi server.')));
+      } finally {
+        if (!options.silent) hideLoader();
+      }
+    };
+
+    function normalizeRoleClient(role) {
+      const value = String(role || '').trim().toUpperCase();
+      if (value === 'USER' || value === 'PENGGUNA') return 'USER';
+      if (value === 'OPERATOR' || value === 'OPERATOR BARU') return 'Operator';
+      if (value === 'ADMIN') return 'Admin';
+      if (value === 'DEVELOPER') return 'Developer';
+      if (value === 'MANAGER') return 'Manager';
+      return String(role || '').trim();
+    }
+    function isUserRole() { return normalizeRoleClient(AppState.user && AppState.user.role) === 'USER'; }
+    function canOperateAdmin() {
+      return ['Admin', 'Operator', 'Developer'].includes(normalizeRoleClient(AppState.user && AppState.user.role));
+    }
+
+    const showLoader = () => {
+      const loader = document.getElementById('global-loader');
+      if (loader) loader.classList.remove('hidden');
+    };
+    
+    const hideLoader = () => {
+      const loader = document.getElementById('global-loader');
+      if (loader) loader.classList.add('hidden');
+    };
+
+    const Toast = Swal.mixin({
+      toast: true, position: 'top-end', showConfirmButton: false, timer: 3000,
+      timerProgressBar: true, background: '#2E2E2E', color: '#fff'
+    });
+
+    /*========================================================================
+      ROUTER & VIEW ENGINE
+    ========================================================================*/
+    function initApp() {
+      const savedUser = localStorage.getItem('sipks_user');
+      if (AppState.token && savedUser) {
+        AppState.user = JSON.parse(savedUser);
+        renderLayout();
+      } else {
+        renderAuth();
+      }
+    }
+
+    function renderAuth(mode = 'login') {
+      const app = document.getElementById('app');
+
+      app.innerHTML = `
+        <div class="w-full min-h-screen flex flex-col justify-between">
+          <div class="flex-1 w-full flex items-center justify-center p-4 py-10">
+            <div class="login-card w-full max-w-md p-8 page-transition mx-auto relative">
+              <div class="text-center mb-8">
+                <div class="logo-container mb-4">
+                  ${logoSvg}
+                </div>
+                <h1 class="text-3xl font-extrabold text-[#2E2E2E] tracking-tight">SIPKS</h1>
+                <p class="text-[#707070] text-sm mt-1 font-medium">Sistem Informasi Perusahaan Kelapa Sawit</p>
+              </div>
+              
+              ${mode === 'login' ? `
+                <form id="authForm" onsubmit="handleAuth(event, 'login')">
+                  <div class="mb-4 text-left">
+                    <label class="block text-sm mb-1 text-[#2E2E2E] font-semibold">Username</label>
+                    <div class="relative">
+                      <i class="fas fa-user absolute left-4 top-4 text-[#C8962E]"></i>
+                      <input type="text" id="username" required class="luxury-input w-full pl-11 pr-4 py-3 rounded-xl" placeholder="Masukkan Username">
+                    </div>
+                  </div>
+                  <div class="mb-6 text-left">
+                    <label class="block text-sm mb-1 text-[#2E2E2E] font-semibold">Password</label>
+                    <div class="relative">
+                      <i class="fas fa-lock absolute left-4 top-4 text-[#C8962E]"></i>
+                      <input type="password" id="password" required class="luxury-input w-full pl-11 pr-4 py-3 rounded-xl" placeholder="••••••••">
+                    </div>
+                    <div class="text-right mt-2">
+                      <a href="javascript:void(0)" onclick="renderAuth('forgot')" class="text-xs text-[#C8962E] hover:text-[#D8B867] transition font-semibold">Lupa Password?</a>
+                    </div>
+                  </div>
+                  <button type="submit" class="w-full btn-login py-3 font-semibold text-lg">
+                    Masuk Sistem
+                  </button>
+                  <p class="text-center mt-6 text-sm text-[#707070]">Belum punya akun? <a href="javascript:void(0)" onclick="renderAuth('register')" class="text-[#C8962E] font-semibold hover:underline transition">Daftar sekarang</a></p>
+                </form>
+              ` : mode === 'register' ? `
+                <form id="authForm" onsubmit="handleAuth(event, 'register')">
+                  <div class="mb-4">
+                    <input type="text" id="reg_username" required class="luxury-input w-full px-4 py-3 text-sm rounded-xl" placeholder="Username">
+                  </div>
+                  <div class="mb-4">
+                    <input type="email" id="reg_email" required class="luxury-input w-full px-4 py-3 text-sm rounded-xl" placeholder="Email Aktif">
+                  </div>
+                  <div class="grid grid-cols-2 gap-4 mb-6">
+                    <input type="password" id="reg_password" required class="luxury-input w-full px-4 py-3 text-sm rounded-xl" placeholder="Password">
+                    <input type="password" id="reg_conf" required class="luxury-input w-full px-4 py-3 text-sm rounded-xl" placeholder="Ulangi Password">
+                  </div>
+                  <p class="text-xs text-[#707070] mb-4">Pendaftaran mandiri hanya membuat akun USER. Akses Operator ditetapkan secara manual oleh pengelola melalui kolom Role di Spreadsheet.</p>
+                  <button type="submit" class="w-full btn-login py-3 font-semibold text-lg">
+                    Daftar Sekarang
+                  </button>
+                  <p class="text-center mt-6 text-sm text-[#707070]"><a href="javascript:void(0)" onclick="renderAuth('login')" class="text-[#C8962E] font-semibold hover:underline transition"><i class="fas fa-arrow-left"></i> Kembali ke Login</a></p>
+                </form>
+              ` : mode === 'forgot' ? `
+                 <form id="authForm" onsubmit="handleAuth(event, 'req_otp')">
+                  <p class="text-sm text-[#707070] mb-6 text-center">Masukkan Username dan Email terdaftar untuk pengiriman kode OTP.</p>
+                  <div class="mb-4">
+                    <input type="text" id="f_username" required class="luxury-input w-full px-4 py-3 rounded-xl mb-4" placeholder="Username Anda">
+                    <input type="email" id="f_email" required class="luxury-input w-full px-4 py-3 rounded-xl" placeholder="Email Anda">
+                  </div>
+                  <button type="submit" class="w-full btn-login py-3 font-semibold text-lg">Minta OTP Reset</button>
+                  <p class="text-center mt-6 text-sm text-[#707070]"><a href="javascript:void(0)" onclick="renderAuth('login')" class="text-[#C8962E] font-semibold hover:underline transition">Kembali ke Login</a></p>
+                 </form>
+              ` : `
+                 <form id="authForm" onsubmit="handleAuth(event, 'reset_pass')">
+                  <p class="text-sm text-[#C8962E] mb-6 text-center font-semibold">Kode OTP Terkirim! Mohon periksa inbox atau folder spam email Anda.</p>
+                  <div class="mb-4">
+                    <input type="hidden" id="r_username" value="${window.tempUsername || ''}">
+                    <input type="text" id="r_otp" required class="luxury-input w-full px-4 py-3 rounded-xl mb-4 text-center tracking-[8px] font-bold text-lg" placeholder="KODE OTP">
+                    <input type="password" id="r_new_password" required class="luxury-input w-full px-4 py-3 rounded-xl mb-4" placeholder="Password Baru">
+                    <input type="password" id="r_conf_password" required class="luxury-input w-full px-4 py-3 rounded-xl" placeholder="Konfirmasi Password">
+                  </div>
+                  <button type="submit" class="w-full btn-login py-3 font-semibold text-lg">Ganti Password</button>
+                  <p class="text-center mt-6 text-sm text-[#707070]"><a href="javascript:void(0)" onclick="renderAuth('forgot')" class="text-[#C8962E] font-semibold hover:underline transition">Minta Ulang OTP</a></p>
+                 </form>
+              `}
+            </div>
+          </div>
+          
+          <footer class="w-full py-4 text-center bg-[#2E2E2E]">
+            <p class="text-white text-xs sm:text-sm font-medium tracking-wide">© 2026 PT. Cipta Karya Palma . All Rights Reserved.</p>
+          </footer>
+        </div>
+      `;
+    }
+
+    async function handleAuth(e, mode) {
+      e.preventDefault();
+      try {
+        if (mode === 'login') {
+          const username = document.getElementById('username').value;
+          const password = document.getElementById('password').value;
+          const res = await apiCall('login', null, {username, password});
+          
+          AppState.token = res.token;
+          AppState.user = res.user;
+          localStorage.setItem('sipks_token', res.token);
+          localStorage.setItem('sipks_user', JSON.stringify(res.user));
+          Toast.fire({icon: 'success', title: 'Login Berhasil'});
+          renderLayout();
+          
+        } else if (mode === 'register') {
+          const pass = document.getElementById('reg_password').value;
+          const conf = document.getElementById('reg_conf').value;
+          if(pass !== conf) return Toast.fire({icon: 'error', title: 'Konfirmasi password tidak cocok!'});
+          const payload = {
+            username: document.getElementById('reg_username').value,
+            email: document.getElementById('reg_email').value,
+            password: pass
+          };
+          const msg = await apiCall('register', null, payload);
+          Swal.fire('Berhasil', msg, 'success');
+          renderAuth('login');
+          
+        } else if (mode === 'req_otp') {
+           const username = document.getElementById('f_username').value;
+           const email = document.getElementById('f_email').value;
+           window.tempUsername = username;
+           const msg = await apiCall('req_otp', null, { username, email });
+           Swal.fire('Terkirim', msg, 'success');
+           renderAuth('reset');
+           
+        } else if (mode === 'reset_pass') {
+           const pass = document.getElementById('r_new_password').value;
+           const conf = document.getElementById('r_conf_password').value;
+           if(pass !== conf) return Toast.fire({icon: 'error', title: 'Password baru tidak cocok!'});
+           
+           const payload = { 
+               username: document.getElementById('r_username').value, 
+               otp: document.getElementById('r_otp').value,
+               newPassword: pass
+           };
+           const msg = await apiCall('reset_pass', null, payload);
+           Swal.fire('Berhasil', msg, 'success');
+           renderAuth('login');
+        }
+      } catch (err) {
+        Toast.fire({icon: 'error', title: err});
+      }
+    }
+
+    function doLogout() {
+      if (window.sipksRealtimeTimer) { clearInterval(window.sipksRealtimeTimer); window.sipksRealtimeTimer = null; }
+      localStorage.removeItem('sipks_token');
+      localStorage.removeItem('sipks_user');
+      AppState.user = null;
+      AppState.token = null;
+      renderAuth();
+    }
+
+    /*========================================================================
+      DASHBOARD LAYOUT & SIDEBAR (SIPKS PT. CIPTA KARYA PALMA)
+    ========================================================================*/
+    function renderLayout() {
+      // PERIKSA ROLE USER KONTRAK
+      if (AppState.user) AppState.user.role = normalizeRoleClient(AppState.user.role);
+      if (isUserRole()) {
+        renderUserDashboard();
+        return;
+      }
+
+      const isAdmin = normalizeRoleClient(AppState.user.role) === 'Admin';
+      const isOperator = normalizeRoleClient(AppState.user.role) === 'Operator';
+      const hasAdminMenus = isAdmin || isOperator || normalizeRoleClient(AppState.user.role) === 'Developer';
+
+      let menus = `
+        <li class="mb-2"><a href="javascript:void(0)" onclick="navigate('dashboard')" id="nav-dashboard" class="flex items-center px-4 py-3 rounded-lg hover:bg-[#E7DCC7]/50 transition group text-[#707070]"><i class="fas fa-home w-6 group-hover:text-[#C8962E]"></i> Dashboard</a></li>
+        
+        <div class="mt-4 mb-2 px-4 text-xs font-semibold text-[#D8B867] uppercase tracking-wider">Operasional</div>
+        <li class="mb-2"><a href="javascript:void(0)" onclick="navigate('penerimaan')" id="nav-penerimaan" class="flex items-center px-4 py-3 rounded-lg hover:bg-[#E7DCC7]/50 transition group text-[#707070]"><i class="fas fa-inbox w-6 group-hover:text-[#C8962E]"></i> Penerimaan Sawit</a></li>
+        <li class="mb-2"><a href="javascript:void(0)" onclick="navigate('timbangan')" id="nav-timbangan" class="flex items-center px-4 py-3 rounded-lg hover:bg-[#E7DCC7]/50 transition group text-[#707070]"><i class="fas fa-balance-scale w-6 group-hover:text-[#C8962E]"></i> Timbangan</a></li>
+        <li class="mb-2"><a href="javascript:void(0)" onclick="navigate('transportasi')" id="nav-transportasi" class="flex items-center px-4 py-3 rounded-lg hover:bg-[#E7DCC7]/50 transition group text-[#707070]"><i class="fas fa-truck w-6 group-hover:text-[#C8962E]"></i> Transportasi</a></li>
+        
+        <div class="mt-4 mb-2 px-4 text-xs font-semibold text-[#D8B867] uppercase tracking-wider">Data Master</div>
+        <li class="mb-2"><a href="javascript:void(0)" onclick="navigate('estate')" id="nav-estate" class="flex items-center px-4 py-3 rounded-lg hover:bg-[#E7DCC7]/50 transition group text-[#707070]"><i class="fas fa-seedling w-6 group-hover:text-[#C8962E]"></i> Data Estate</a></li>
+        <li class="mb-2"><a href="javascript:void(0)" onclick="navigate('divisi')" id="nav-divisi" class="flex items-center px-4 py-3 rounded-lg hover:bg-[#E7DCC7]/50 transition group text-[#707070]"><i class="fas fa-layer-group w-6 group-hover:text-[#C8962E]"></i> Data Divisi</a></li>
+        <li class="mb-2"><a href="javascript:void(0)" onclick="navigate('blok')" id="nav-blok" class="flex items-center px-4 py-3 rounded-lg hover:bg-[#E7DCC7]/50 transition group text-[#707070]"><i class="fas fa-th-large w-6 group-hover:text-[#C8962E]"></i> Data Blok</a></li>
+        <li class="mb-2"><a href="javascript:void(0)" onclick="navigate('supplier')" id="nav-supplier" class="flex items-center px-4 py-3 rounded-lg hover:bg-[#E7DCC7]/50 transition group text-[#707070]"><i class="fas fa-handshake w-6 group-hover:text-[#C8962E]"></i> Data Supplier</a></li>
+        <li class="mb-2"><a href="javascript:void(0)" onclick="navigate('hargatbs')" id="nav-hargatbs" class="flex items-center px-4 py-3 rounded-lg hover:bg-[#E7DCC7]/50 transition group text-[#707070]"><i class="fas fa-tags w-6 group-hover:text-[#C8962E]"></i> Harga TBS</a></li>
+      `;
+
+      if (hasAdminMenus) {
+        menus += `
+          <div class="mt-4 mb-2 px-4 text-xs font-semibold text-[#D8B867] uppercase tracking-wider">Pengaturan</div>
+          <li class="mb-2"><a href="javascript:void(0)" onclick="navigate('users')" id="nav-users" class="flex items-center px-4 py-3 rounded-lg hover:bg-[#E7DCC7]/50 transition group text-[#C8962E]"><i class="fas fa-users-cog w-6"></i> Manajemen User</a></li>
+          <li class="mb-2"><a href="javascript:void(0)" onclick="navigate('log')" id="nav-log" class="flex items-center px-4 py-3 rounded-lg hover:bg-[#E7DCC7]/50 transition group text-[#C8962E]"><i class="fas fa-history w-6"></i> Aktivitas Sistem</a></li>
+        `;
+      }
+
+      document.getElementById('app').innerHTML = `
+        <!-- Sidebar -->
+        <aside class="glass w-72 h-full flex-shrink-0 flex flex-col hidden md:flex z-10 border-r border-[#E7DCC7]">
+          <div class="p-6 flex items-center gap-3 border-b border-[#E7DCC7]">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-[#C8962E] to-[#D8B867] flex items-center justify-center text-xl shadow-lg shadow-[#C8962E]/20">
+              <i class="fas fa-leaf text-white"></i>
+            </div>
+            <div>
+              <h2 class="font-bold text-lg tracking-wide text-[#2E2E2E]">SIPKS</h2>
+              <p class="text-xs text-[#707070]">PT. Cipta Karya Palma</p>
+            </div>
+          </div>
+          
+          <div class="p-4 flex-1 overflow-y-auto">
+            <ul class="space-y-1">
+              ${menus}
+            </ul>
+          </div>
+          
+          <div class="p-4 border-t border-[#E7DCC7]">
+            <div class="flex items-center gap-3 mb-4 px-2">
+              <div class="w-10 h-10 rounded-full bg-[#EFE6D4] flex items-center justify-center border border-[#E7DCC7]">
+                <i class="fas fa-user text-[#C8962E]"></i>
+              </div>
+              <div class="overflow-hidden">
+                <p class="font-medium text-sm text-[#2E2E2E] truncate">${AppState.user.username}</p>
+                <p class="text-xs text-[#C8962E]">${AppState.user.role}</p>
+              </div>
+            </div>
+            <button onclick="doLogout()" class="w-full py-2 px-4 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 transition flex items-center justify-center gap-2">
+              <i class="fas fa-sign-out-alt"></i> Logout
+            </button>
+          </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 h-full overflow-hidden flex flex-col relative z-0">
+          <!-- Mobile Header -->
+          <header class="md:hidden glass p-4 flex justify-between items-center z-20">
+            <h2 class="font-bold text-lg text-[#2E2E2E]">SIPKS</h2>
+            <button onclick="document.querySelector('aside').classList.toggle('hidden')" class="text-[#707070] p-2"><i class="fas fa-bars text-xl"></i></button>
+          </header>
+          
+          <!-- Content Area -->
+          <div id="main-content" class="flex-1 overflow-y-auto p-4 md:p-8 page-transition">
+            <!-- Dynamic Content Injected Here -->
+          </div>
+          
+          <!-- Footer Layout -->
+          <footer class="w-full py-4 mt-auto text-center border-t border-[#E7DCC7] bg-[#EFE6D4]">
+            <p class="text-[#2E2E2E] text-xs sm:text-sm font-semibold tracking-wide">© 2026 PT. Cipta Karya Palma . All Rights Reserved.</p>
+          </footer>
+        </main>
+      `;
+      navigate(AppState.currentView);
+    }
+
+    /*========================================================================
+      USER ROLE EXCLUSIVE DASHBOARD (AMS PROFILE & LIVE TBS PRICES)
+    ========================================================================*/
+    function renderUserDashboard() {
+      document.getElementById('app').innerHTML = `
+        <aside class="glass w-64 min-h-screen flex-shrink-0 flex flex-col border-r border-[#E7DCC7]">
+          <div class="p-5 flex items-center gap-3 border-b border-[#E7DCC7]">
+            <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-[#C8962E] to-[#D8B867] flex items-center justify-center text-xl shadow-lg"><i class="fas fa-leaf text-white"></i></div>
+            <div><h2 class="font-bold text-lg text-[#2E2E2E]">SIPKS</h2><p class="text-xs text-[#707070]">PT. Cipta Karya Palma</p></div>
+          </div>
+          <nav class="p-4 flex-1">
+            <p class="px-3 mb-3 text-xs font-bold uppercase tracking-wider text-[#D8B867]">Informasi</p>
+            <a href="javascript:void(0)" onclick="fetchLiveHargaTbsForUser()" class="flex items-center gap-3 px-4 py-3 rounded-xl bg-[#D8B867]/30 border border-[#C8962E]/30 text-[#2E2E2E]"><i class="fas fa-tags w-5 text-[#C8962E]"></i> Harga TBS</a>
+          </nav>
+          <div class="p-4 border-t border-[#E7DCC7]">
+            <p class="text-sm font-semibold text-[#2E2E2E] truncate">${AppState.user.username}</p>
+            <p class="text-xs text-[#C8962E] mb-4">USER · Akses Harga TBS</p>
+            <button onclick="doLogout()" class="w-full py-2 px-4 rounded-lg bg-red-500/10 text-red-500 border border-red-500/20 flex items-center justify-center gap-2"><i class="fas fa-sign-out-alt"></i> Logout</button>
+          </div>
+        </aside>
+        <main class="flex-1 min-w-0 min-h-screen bg-[#F8F3E8]">
+          <header class="bg-white/90 border-b border-[#E7DCC7] px-6 py-5">
+            <h1 class="text-2xl font-bold text-[#2E2E2E]"><i class="fas fa-tags text-[#C8962E] mr-2"></i>Harga TBS</h1>
+            <p class="text-sm text-[#707070] mt-1">Informasi harga terbaru yang diperbarui oleh pengelola.</p>
+          </header>
+          <section class="p-5 md:p-8 max-w-5xl">
+            <div class="glass p-6 md:p-8 rounded-2xl border border-[#E7DCC7] shadow-lg">
+              <div class="flex items-center justify-between gap-3 mb-6">
+                <div class="flex items-center gap-3"><div class="p-3 bg-[#C8962E]/10 text-[#C8962E] rounded-xl"><i class="fas fa-dollar-sign text-xl"></i></div><div><h2 class="text-lg font-bold text-[#2E2E2E]">Harga TBS Terbaru</h2><p class="text-xs text-[#707070]">Data langsung dari Spreadsheet</p></div></div>
+                <button onclick="fetchLiveHargaTbsForUser()" class="p-3 bg-[#EFE6D4] hover:bg-[#E7DCC7] rounded-lg" title="Muat ulang"><i class="fas fa-sync-alt"></i></button>
+              </div>
+              <div class="text-center py-8 bg-white/70 rounded-2xl border border-[#E7DCC7] mb-5">
+                <p class="text-xs font-bold text-[#707070] uppercase mb-2">Tanggal Berlaku</p>
+                <p id="live-tbs-tanggal" class="text-base font-semibold text-[#2E2E2E] mb-6">Memuat...</p>
+                <p class="text-xs font-bold text-[#707070] uppercase mb-2">Harga TBS (Rp/Kg)</p>
+                <h3 id="live-tbs-harga" class="text-4xl md:text-5xl font-black text-[#C8962E]">Rp -</h3>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-[#E7DCC7] pt-5 text-sm">
+                <div class="flex justify-between gap-3"><span class="text-[#707070]">Diperbarui pada</span><span id="live-tbs-updated" class="font-semibold text-[#2E2E2E] text-right">-</span></div>
+                <div class="flex justify-between gap-3"><span class="text-[#707070]">Status harga</span><span id="live-tbs-status" class="px-3 py-1 rounded-full text-xs font-bold bg-[#EFE6D4]">Memuat...</span></div>
+              </div>
+            </div>
+          </section>
+          <footer class="px-6 py-4 text-center text-xs text-[#707070]">© 2026 PT. Cipta Karya Palma. All Rights Reserved.</footer>
+        </main>`;
+      fetchLiveHargaTbsForUser();
+      startRealtimeRefresh();
+    }
+
+    function fetchLiveHargaTbsForUser(silent = false) {
+      const tglEl = document.getElementById('live-tbs-tanggal');
+      const hrgEl = document.getElementById('live-tbs-harga');
+      const updEl = document.getElementById('live-tbs-updated');
+      const stsEl = document.getElementById('live-tbs-status');
+
+      if (!hrgEl) return;
+
+      // Panggil endpoint get_data HargaTBS
+      apiCall('get_data', 'HargaTBS', null, { silent })
+        .then(data => {
+          if (data && data.length > 0) {
+            // Ambil row harga tbs yang terakhir diinput admin
+            const lastEntry = data[data.length - 1];
+            
+            tglEl.innerText = lastEntry.Tanggal || new Date().toISOString().split('T')[0];
+            
+            const rawHarga = lastEntry.Harga || "0";
+            const formatted = new Intl.NumberFormat('id-ID', {
+              style: 'currency',
+              currency: 'IDR',
+              minimumFractionDigits: 0
+            }).format(rawHarga);
+            
+            hrgEl.innerText = formatted;
+            updEl.innerText = lastEntry.Waktu_Update || lastEntry.Tanggal;
+            
+            if (lastEntry.Status === "Berlaku") {
+              stsEl.className = "px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200";
+              stsEl.innerText = "Berlaku";
+            } else {
+              stsEl.className = "px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200";
+              stsEl.innerText = "Belum Diperbarui";
+            }
+          } else {
+            hrgEl.innerText = "Belum Diinput";
+            stsEl.innerText = "Belum Diperbarui";
+          }
+        })
+        .catch(err => {
+          console.error("Gagal sinkronisasi live harga: ", err);
+          hrgEl.innerText = "Gagal Memuat";
+          stsEl.innerText = "Error Koneksi";
+        });
+    }
+
+    function navigate(view) {
+      if (isUserRole()) { renderUserDashboard(); return; }
+      AppState.currentView = view;
+      document.querySelectorAll('aside a').forEach(el => {
+        el.classList.remove('bg-[#D8B867]/30', 'text-[#2E2E2E]', 'border', 'border-[#C8962E]/30');
+        el.classList.add('text-[#707070]');
+      });
+      const activeNav = document.getElementById(`nav-${view}`);
+      if(activeNav) {
+        activeNav.classList.remove('text-[#707070]');
+        activeNav.classList.add('bg-[#D8B867]/30', 'text-[#2E2E2E]', 'border', 'border-[#C8962E]/30');
+      }
+
+      const content = document.getElementById('main-content');
+      content.innerHTML = '';
+
+      if (view === 'dashboard') loadDashboard();
+      else loadTableView(view);
+    }
+
+    /*========================================================================
+      DASHBOARD VIEW (SIPKS KPIs)
+    ========================================================================*/
+    let selectedChartPeriod = 'weekly';
+    let tonaseChartInstance = null;
+
+    async function loadDashboard(period = selectedChartPeriod, silent = false) {
+      selectedChartPeriod = period;
+      const container = document.getElementById('main-content');
+      if (!container) return;
+      if (!silent || !document.getElementById('tonaseChart')) {
+        container.innerHTML = `
+          <div class="mb-8"><h1 class="text-3xl font-bold text-[#2E2E2E] mb-2">Dashboard, ${AppState.user.username}! 👋</h1><p class="text-[#707070]">Ringkasan operasional berdasarkan data Spreadsheet.</p></div>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8" id="dash-cards">
+            <div class="glass p-6 rounded-2xl skeleton h-28"></div><div class="glass p-6 rounded-2xl skeleton h-28"></div><div class="glass p-6 rounded-2xl skeleton h-28"></div><div class="glass p-6 rounded-2xl skeleton h-28"></div>
+          </div>
+          <div class="glass p-5 md:p-6 rounded-2xl">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
+              <div><h3 class="text-lg font-semibold text-[#2E2E2E]">Grafik Tonase</h3><p class="text-xs text-[#707070]">Berdasarkan Netto Bersih dari menu Timbangan</p></div>
+              <div class="flex flex-wrap gap-2">
+                <button id="period-daily" onclick="loadDashboard('daily')" class="px-4 py-2 rounded-lg border border-[#E7DCC7] text-sm">Harian</button>
+                <button id="period-weekly" onclick="loadDashboard('weekly')" class="px-4 py-2 rounded-lg border border-[#E7DCC7] text-sm">Mingguan</button>
+                <button id="period-monthly" onclick="loadDashboard('monthly')" class="px-4 py-2 rounded-lg border border-[#E7DCC7] text-sm">Bulanan</button>
+              </div>
+            </div>
+            <div class="relative w-full" style="height:320px"><canvas id="tonaseChart"></canvas></div>
+          </div>`;
+      }
+      try {
+        const stats = await apiCall('get_dashboard', null, { period: selectedChartPeriod }, { silent });
+        const cards = document.getElementById('dash-cards');
+        if (cards) cards.innerHTML = `
+          <div class="glass p-6 rounded-2xl border-l-4 border-[#C8962E]"><p class="text-[#707070] text-sm font-medium">Tonase Hari Ini</p><h3 id="metric-tonase" class="text-3xl font-bold text-[#2E2E2E] mt-2">${stats.tonaseHariIni} Ton</h3></div>
+          <div class="glass p-6 rounded-2xl border-l-4 border-[#D8B867]"><p class="text-[#707070] text-sm font-medium">Jumlah Antrian</p><h3 id="metric-antrian" class="text-3xl font-bold text-[#2E2E2E] mt-2">${stats.antrian} Kendaraan</h3></div>
+          <div class="glass p-6 rounded-2xl border-l-4 border-[#C8962E]"><p class="text-[#707070] text-sm font-medium">OTR (On Time Receiving)</p><h3 id="metric-otr" class="text-3xl font-bold text-[#2E2E2E] mt-2">${stats.otr} %</h3></div>
+          <div class="glass p-6 rounded-2xl border-l-4 border-[#D8B867]"><p class="text-[#707070] text-sm font-medium">Total Supplier Mitra</p><h3 id="metric-supplier" class="text-3xl font-bold text-[#2E2E2E] mt-2">${stats.totalSupplier}</h3></div>`;
+        ['daily','weekly','monthly'].forEach(p => {
+          const button = document.getElementById('period-' + p);
+          if (button) button.className = `px-4 py-2 rounded-lg border text-sm ${p === selectedChartPeriod ? 'bg-[#C8962E] text-white border-[#C8962E]' : 'border-[#E7DCC7] text-[#2E2E2E]'}`;
+        });
+        const chartData = stats.chart || { labels: [], values: [] };
+        const canvas = document.getElementById('tonaseChart');
+        if (canvas && typeof Chart !== 'undefined') {
+          if (tonaseChartInstance && tonaseChartInstance.canvas !== canvas) {
+            tonaseChartInstance.destroy();
+            tonaseChartInstance = null;
+          }
+          if (tonaseChartInstance) {
+            tonaseChartInstance.data.labels = chartData.labels || [];
+            tonaseChartInstance.data.datasets[0].data = chartData.values || [];
+            tonaseChartInstance.update('none');
+          } else {
+            tonaseChartInstance = new Chart(canvas.getContext('2d'), {
+              type: 'bar',
+              data: { labels: chartData.labels || [], datasets: [{ label: 'Tonase (Ton)', data: chartData.values || [], backgroundColor: 'rgba(200, 150, 46, 0.6)', borderColor: '#C8962E', borderWidth: 1, borderRadius: 5 }] },
+              options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true } }, scales: { y: { beginAtZero: true, title: { display: true, text: 'Ton' }, grid: { color: 'rgba(0,0,0,0.05)' } }, x: { grid: { display: false } } } }
+            });
+          }
+        }
+      } catch (err) {
+        if (!silent) Toast.fire({icon: 'error', title: 'Gagal memuat dashboard: ' + err});
+        console.error('Dashboard error:', err);
+      }
+    }
+
+    function startRealtimeRefresh() {
+      if (window.sipksRealtimeTimer) clearInterval(window.sipksRealtimeTimer);
+      window.sipksRealtimeTimer = setInterval(() => {
+        if (!AppState.user || document.hidden) return;
+        if (isUserRole()) fetchLiveHargaTbsForUser(true);
+        else if (AppState.currentView === 'dashboard') loadDashboard(selectedChartPeriod, true);
+        else if (SCHEMAS[AppState.currentView]) loadTableView(AppState.currentView, true);
+      }, 10000);
+    }
+
+    /*========================================================================
+      UNIVERSAL TABLE HANDLER (CRUD) for SIPKS
+    ========================================================================*/
+    const SCHEMAS = {
+      penerimaan: { table: 'Penerimaan_Sawit', title: 'Penerimaan Sawit', icon: 'fa-inbox', cols: ['ID_Penerimaan', 'Tanggal', 'No_Kendaraan', 'Supplier', 'Status_Verifikasi'], form: ['Tanggal', 'No_Kendaraan', 'Nama_Sopir', 'Supplier', 'Asal_Estate', 'Asal_Divisi', 'Asal_Blok', 'Status_Verifikasi'] },
+      timbangan: { table: 'Timbangan', title: 'Data Timbangan', icon: 'fa-balance-scale', cols: ['ID_Penerimaan', 'Waktu_Masuk', 'Bruto_Kg', 'Tare_Kg', 'Netto_Kg', 'Potongan_Persen', 'Netto_Bersih_Kg', 'Harga_Per_Kg', 'Hasil_Rupiah', 'Status'], form: ['ID_Penerimaan', 'Waktu_Masuk', 'Bruto_Kg', 'Tare_Kg', 'Potongan_Persen', 'Harga_Per_Kg', 'Hasil_Rupiah', 'Status'] },
+      transportasi: { table: 'Transportasi', title: 'Data Transportasi', icon: 'fa-truck', cols: ['No_Kendaraan', 'Jenis_Kendaraan', 'Nama_Sopir', 'Status_Kendaraan'], form: ['No_Kendaraan', 'Jenis_Kendaraan', 'Nama_Sopir', 'No_HP', 'Status_Kendaraan'] },
+      estate: { table: 'Estate', title: 'Data Estate', icon: 'fa-seedling', cols: ['Kode_Estate', 'Nama_Estate', 'Manajer'], form: ['Kode_Estate', 'Nama_Estate', 'Manajer', 'Luas_Ha', 'Lokasi'] },
+      divisi: { table: 'Divisi', title: 'Data Divisi', icon: 'fa-layer-group', cols: ['Kode_Divisi', 'Kode_Estate', 'Nama_Divisi', 'Asisten'], form: ['Kode_Divisi', 'Kode_Estate', 'Nama_Divisi', 'Asisten'] },
+      blok: { table: 'Blok', title: 'Data Blok', icon: 'fa-th-large', cols: ['Kode_Blok', 'Kode_Divisi', 'Luas_Ha', 'Tahun_Tanam'], form: ['Kode_Blok', 'Kode_Divisi', 'Luas_Ha', 'Tahun_Tanam', 'Jumlah_Pokok'] },
+      supplier: { table: 'Supplier', title: 'Data Supplier', icon: 'fa-handshake', cols: ['Kode_Supplier', 'Nama_Supplier', 'Tipe_Supplier', 'No_HP'], form: ['Kode_Supplier', 'Nama_Supplier', 'Tipe_Supplier', 'Alamat', 'No_HP'] },
+      hargatbs: { table: 'HargaTBS', title: 'Harga TBS', icon: 'fa-tags', cols: ['Tanggal', 'Harga', 'Waktu_Update', 'Status'], form: ['Tanggal', 'Harga', 'Status'] },
+      users: { table: 'Users', title: 'Manajemen User', icon: 'fa-users-cog', cols: ['Username', 'Email', 'Role', 'Status'], form: ['Username', 'Email', 'Role', 'Status'], isAdminOnly: true },
+      log: { table: 'LogActivity', title: 'Log Aktivitas', icon: 'fa-history', cols: ['Timestamp', 'Username', 'Action', 'Description'], form: [], isAdminOnly: true, readonly: true }
+    };
+    
+    let currentTableData = [];
+
+    async function loadTableView(viewKey, silent = false) {
+      const schema = SCHEMAS[viewKey];
+      if (!schema) return;
+      if (isUserRole()) { renderUserDashboard(); return; }
+      if (schema.isAdminOnly && !canOperateAdmin()) return;
+
+      const role = normalizeRoleClient(AppState.user.role);
+      if (silent) {
+        try {
+          const latest = await apiCall('get_data', schema.table, null, { silent: true });
+          currentTableData = latest;
+          const body = document.getElementById('tableBody');
+          if (body && AppState.currentView === viewKey) renderTableRows(viewKey, latest, role === 'Admin' || role === 'Operator' || role === 'Developer', role === 'Admin' || role === 'Operator' || role === 'Developer');
+        } catch (err) { console.warn('Sinkronisasi tabel gagal:', err); }
+        return;
+      }
+      const canAdd = !schema.readonly && (role === 'Admin' || role === 'Operator');
+      const canEdit = !schema.readonly && (role === 'Admin' || role === 'Operator');
+      const canDelete = !schema.readonly && (role === 'Admin' || role === 'Operator' || role === 'Developer');
+
+      const container = document.getElementById('main-content');
+      container.innerHTML = `
+        <div class="flex justify-between items-center mb-6">
+          <div>
+            <h2 class="text-2xl font-bold text-[#2E2E2E]"><i class="fas ${schema.icon} mr-2"></i> ${schema.title}</h2>
+          </div>
+          <div class="flex gap-2">
+            <button onclick="exportData('pdf')" class="bg-red-600/95 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm shadow transition"><i class="fas fa-file-pdf"></i> PDF</button>
+            <button onclick="exportData('excel')" class="bg-green-600/95 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm shadow transition"><i class="fas fa-file-excel"></i> Excel</button>
+            ${canAdd ? `
+              <button onclick="showFormModal('${viewKey}')" class="btn-login px-4 py-2 rounded-lg text-sm shadow-lg transition shadow-[#C8962E]/30">
+                <i class="fas fa-plus"></i> Tambah Data
+              </button>
+            ` : ''}
+          </div>
+        </div>
+        
+        <div class="glass rounded-xl overflow-hidden shadow-xl">
+          <div class="p-4 border-b border-[#E7DCC7] flex justify-between items-center">
+            <input type="text" id="searchInput" placeholder="Cari data..." class="glass-input px-4 py-2 rounded-lg text-sm w-64" onkeyup="filterTable()">
+          </div>
+          <div class="overflow-x-auto w-full">
+            <table class="w-full whitespace-nowrap" id="dataTable">
+              <thead>
+                <tr>
+                  <th class="w-12 text-center">No</th>
+                  ${schema.cols.map(c => `<th>${c.replace(/_/g, ' ')}</th>`).join('')}
+                  ${canEdit || canDelete ? `<th class="text-center w-24">Aksi</th>` : ''}
+                </tr>
+              </thead>
+              <tbody id="tableBody">
+                <tr><td colspan="100%" class="text-center py-8 text-[#707070]"><div class="skeleton h-10 w-full mb-2"></div><div class="skeleton h-10 w-full"></div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- MODAL FORM -->
+        <div id="formModal" class="fixed inset-0 bg-[#2E2E2E]/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4 overflow-y-auto">
+          <div class="glass w-full max-w-2xl rounded-2xl shadow-2xl my-8 transform transition-all border border-[#C8962E]/30">
+            <div class="p-6 border-b border-[#E7DCC7] flex justify-between items-center bg-[#EFE6D4]/50">
+              <h3 class="text-lg font-bold text-[#C8962E]" id="modalTitle">Form</h3>
+              <button onclick="closeModal()" class="text-[#707070] hover:text-[#2E2E2E]"><i class="fas fa-times text-xl"></i></button>
+            </div>
+            <form id="crudForm" onsubmit="saveData(event, '${viewKey}')" class="p-6 bg-white">
+              <input type="hidden" id="form_rowIndex" value="">
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="formFields">
+                <!-- Fields injected dynamically -->
+              </div>
+              <div class="mt-6 flex justify-end gap-3 border-t border-[#E7DCC7] pt-4">
+                <button type="button" onclick="closeModal()" class="px-5 py-2.5 rounded-lg border border-[#E7DCC7] text-[#707070] hover:bg-[#EFE6D4] transition">Batal</button>
+                <button type="submit" class="px-5 py-2.5 rounded-lg btn-login text-white font-semibold shadow-lg shadow-[#C8962E]/30 transition">Simpan Data</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      `;
+      try {
+        const data = await apiCall('get_data', schema.table);
+        currentTableData = data;
+        renderTableRows(viewKey, data, canEdit, canDelete);
+      } catch(err) {
+        document.getElementById('tableBody').innerHTML = `<tr><td colspan="100%" class="text-center py-8 text-red-500">Error: ${err}</td></tr>`;
+      }
+    }
+
+    function renderTableRows(viewKey, data, canEdit, canDelete) {
+      const schema = SCHEMAS[viewKey];
+      const tbody = document.getElementById('tableBody');
+      if (!data || data.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="100%" class="text-center py-8 text-[#707070]">Tidak ada data ditemukan.</td></tr>`;
+        return;
+      }
+
+      let html = '';
+      data.slice().reverse().forEach((row, idx) => {
+        let tr = `<tr><td class="text-center text-[#2E2E2E]">${idx + 1}</td>`;
+        schema.cols.forEach(col => {
+          let val = (row[col] !== undefined && row[col] !== null && row[col] !== '') ? row[col] : '-';
+          if (viewKey === 'timbangan' && col === 'Waktu_Masuk' && val !== '-') val = String(val).replace('T', ' ');
+          if (viewKey === 'timbangan' && (col === 'Harga_Per_Kg' || col === 'Hasil_Rupiah') && val !== '-') val = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(val) || 0);
+          if (viewKey === 'timbangan' && col === 'Harga_Per_Kg' && val !== '-') val += ' / kg';
+          if(col === 'Status' || col === 'Status_Verifikasi') {
+            let color = val === 'Pending' ? 'bg-yellow-100 text-yellow-600' : 
+                        val === 'Aktif' || val === 'Terverifikasi' || val === 'Berlaku' ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600';
+            val = `<span class="px-2 py-1 rounded text-xs font-medium ${color}">${val}</span>`;
+          }
+          if(typeof val === 'string' && val.startsWith("'")) val = val.substring(1);
+          tr += `<td class="text-[#2E2E2E]">${val}</td>`;
+        });
+
+        let actionBtns = '';
+        if (canEdit) actionBtns += `<button onclick="showFormModal('${viewKey}', ${row._rowIndex})" class="text-[#C8962E] hover:text-[#D8B867] mx-2" title="Edit"><i class="fas fa-edit"></i></button>`;
+        if (canDelete) actionBtns += `<button onclick="deleteRow('${viewKey}', ${row._rowIndex})" class="text-red-500 hover:text-red-400 mx-1" title="Hapus"><i class="fas fa-trash"></i></button>`;
+        
+        if (canEdit || canDelete) tr += `<td class="text-center">${actionBtns}</td>`;
+        tr += `</tr>`;
+        html += tr;
+      });
+      tbody.innerHTML = html;
+    }
+
+    function filterTable() {
+      const input = document.getElementById('searchInput').value.toLowerCase();
+      const trs = document.querySelectorAll('#tableBody tr');
+      trs.forEach(tr => {
+        tr.style.display = tr.innerText.toLowerCase().includes(input) ? '' : 'none';
+      });
+    }
+
+    function showFormModal(viewKey, rowIndex = null) {
+      const schema = SCHEMAS[viewKey];
+      const modal = document.getElementById('formModal');
+      document.getElementById('modalTitle').innerText = rowIndex ? `Edit Data ${schema.title}` : `Tambah Data ${schema.title}`;
+      document.getElementById('form_rowIndex').value = rowIndex || '';
+      const formFields = document.getElementById('formFields');
+      let fieldsHtml = '';
+      
+      let rowData = rowIndex ? currentTableData.find(d => d._rowIndex === rowIndex) : {};
+
+      schema.form.forEach(field => {
+        let type = 'text';
+        let val = rowData[field] ?? '';
+        if (viewKey === 'timbangan' && field === 'Harga_Per_Kg' && (val === '' || val === null)) val = 3000;
+        if (viewKey === 'timbangan' && field === 'Hasil_Rupiah' && (val === '' || val === null)) val = 0;
+        let readonly = '';
+        
+        if (typeof val === 'string' && val.startsWith("'")) val = val.substring(1);
+
+        if (field.includes('Tanggal')) { type = 'date'; if(!val) val = new Date().toISOString().split('T')[0]; }
+        else if (field === 'Waktu_Masuk') { type = 'datetime-local'; if (val) val = String(val).replace(' ', 'T').substring(0,16); else val = new Date(Date.now() - new Date().getTimezoneOffset()*60000).toISOString().substring(0,16); }
+        else if (field.includes('Kg') || field.includes('Persen') || field.includes('Luas') || field.includes('Tahun') || field === 'Harga' || field === 'Harga_Per_Kg' || field === 'Hasil_Rupiah') type = 'number';
+        
+        if (field.includes('ID_')) readonly = rowIndex ? 'readonly' : ''; 
+
+        if (field === 'Status' || field === 'Status_Verifikasi' || field === 'Status_Kendaraan') {
+            let statusOptions = ['Pending', 'Aktif', 'Nonaktif'];
+            if (viewKey === 'penerimaan' && field === 'Status_Verifikasi') statusOptions = ['Pending', 'Diterima', 'Ditolak'];
+            if (viewKey === 'timbangan' && field === 'Status') statusOptions = ['Pending', 'Sukses', 'Batal'];
+            if (viewKey === 'hargatbs' && field === 'Status') statusOptions = ['Berlaku', 'Tidak Berlaku'];
+            fieldsHtml += `
+              <div>
+                <label class="block text-xs mb-1 text-[#707070] font-semibold">${field.replace(/_/g, ' ')}</label>
+                <select id="inp_${field}" class="luxury-input w-full px-3 py-2 rounded-lg text-sm" ${readonly}>
+                  ${statusOptions.map(option => `<option value="${option}" ${String(val)===option?'selected':''}>${option}</option>`).join('')}
+                </select>
+              </div>`;
+        } else if (field === 'Role' && viewKey === 'users') {
+             fieldsHtml += `
+              <div>
+                <label class="block text-xs mb-1 text-[#707070] font-semibold">Role</label>
+                <select id="inp_${field}" class="luxury-input w-full px-3 py-2 rounded-lg text-sm">
+                  <option value="Operator" ${val==='Operator'?'selected':''}>Operator</option>
+                  <option value="USER" ${val==='USER'?'selected':''}>USER</option>
+                  <option value="Admin" ${val==='Admin'?'selected':''}>Admin</option>
+                </select>
+              </div>`;
+        } else if (field === 'Alamat') {
+            fieldsHtml += `
+              <div class="md:col-span-2">
+                <label class="block text-xs mb-1 text-[#707070] font-semibold">${field.replace(/_/g, ' ')}</label>
+                <textarea id="inp_${field}" class="luxury-input w-full px-3 py-2 rounded-lg text-sm h-24" ${readonly} required>${val}</textarea>
+              </div>`;
+        } else {
+            let inputModeHTML = (field.includes('HP') || field.includes('Tahun') || field.includes('Kg')) ? `inputmode="numeric"` : '';
+            const computedField = viewKey === 'timbangan' && field === 'Hasil_Rupiah';
+            fieldsHtml += `
+              <div class="${computedField ? 'md:col-span-2 rounded-xl border border-[#D8B867] bg-[#FBF6E9] p-3' : ''}">
+                <label class="block text-xs mb-1 text-[#707070] font-semibold">${field.replace(/_/g, ' ')}</label>
+                <input type="${type}" id="inp_${field}" value="${val}" ${inputModeHTML} class="luxury-input w-full px-3 py-2 rounded-lg text-sm ${computedField ? 'font-bold text-[#8A641B]' : ''}" ${readonly} ${computedField ? 'readonly' : ''} ${computedField || (viewKey === 'timbangan' && field === 'ID_Penerimaan') ? '' : 'required'}>
+                ${computedField ? '<p id="hasilRupiahLabel" class="mt-2 text-sm font-semibold text-[#8A641B]">Estimasi hasil: Rp0</p><p class="text-xs text-[#707070] mt-1">Harga per kg × netto bersih. Nilai dihitung otomatis dan disimpan bersama data timbangan.</p>' : ''}
+              </div>`;
+        }
+      });
+      
+      formFields.innerHTML = fieldsHtml;
+      if (viewKey === 'timbangan') {
+        ['Bruto_Kg','Tare_Kg','Potongan_Persen','Harga_Per_Kg'].forEach(id => { const el = document.getElementById('inp_' + id); if (el) el.addEventListener('input', updateTimbanganEstimate); });
+        updateTimbanganEstimate();
+      }
+      modal.classList.remove('hidden');
+    }
+
+    function updateTimbanganEstimate() {
+      const bruto = Number(document.getElementById('inp_Bruto_Kg')?.value) || 0;
+      const tare = Number(document.getElementById('inp_Tare_Kg')?.value) || 0;
+      const potongan = Math.max(0, Math.min(100, Number(document.getElementById('inp_Potongan_Persen')?.value) || 0));
+      const harga = Number(document.getElementById('inp_Harga_Per_Kg')?.value) || 0;
+      const netto = Math.max(0, bruto - tare);
+      const nettoBersih = netto * (1 - potongan / 100);
+      const hasil = Math.round(nettoBersih * harga);
+      const result = document.getElementById('inp_Hasil_Rupiah');
+      const label = document.getElementById('hasilRupiahLabel');
+      if (result) result.value = hasil;
+      if (label) label.textContent = 'Estimasi hasil: ' + new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(hasil);
+    }
+
+    function closeModal() {
+      document.getElementById('formModal').classList.add('hidden');
+    }
+
+    async function saveData(e, viewKey) {
+      e.preventDefault();
+      const schema = SCHEMAS[viewKey];
+      const rowIndex = document.getElementById('form_rowIndex').value;
+      const payload = {};
+      
+      schema.form.forEach(field => {
+        let el = document.getElementById('inp_' + field);
+        if(el) {
+           let val = el.value;
+           if(field.includes('HP') || field.includes('Kode') || field.includes('Username')) {
+               val = "'" + val;
+           }
+           payload[field] = val;
+        }
+      });
+      
+      try {
+        let msg;
+        if (rowIndex) {
+          payload._rowIndex = parseInt(rowIndex);
+          msg = await apiCall('update_data', schema.table, payload);
+        } else {
+          msg = await apiCall('insert_data', schema.table, payload);
+        }
+        closeModal();
+        Toast.fire({icon: 'success', title: msg});
+        await loadTableView(viewKey);
+        // Muat statistik terbaru setelah penyimpanan berhasil. Jika Dashboard sedang aktif,
+        // perbarui kartu dan grafik langsung; bila sedang di menu lain, data akan dimuat saat Dashboard dibuka.
+        if (AppState.currentView === 'dashboard') await loadDashboard(selectedChartPeriod, true);
+        else apiCall('get_dashboard', null, { period: selectedChartPeriod }, { silent: true }).catch(err => console.warn('Sinkronisasi statistik:', err));
+      } catch(err) {
+        Swal.fire('Error', err, 'error');
+      }
+    }
+
+    async function deleteRow(viewKey, rowIndex) {
+      const confirm = await Swal.fire({
+        title: 'Hapus Data?', text: "Data tidak dapat dikembalikan!", icon: 'warning',
+        showCancelButton: true, confirmButtonColor: '#ef4444', cancelButtonColor: '#D8B867',
+        confirmButtonText: 'Ya, Hapus!', cancelButtonText: 'Batal', background: '#FFFFFF', color: '#2E2E2E'
+      });
+      if(confirm.isConfirmed) {
+        try {
+          const msg = await apiCall('delete_data', SCHEMAS[viewKey].table, { _rowIndex: rowIndex });
+          Toast.fire({icon: 'success', title: msg});
+          loadTableView(viewKey);
+        } catch(err) {
+          Swal.fire('Error', err, 'error');
+        }
+      }
+    }
+
+    /*========================================================================
+      EXPORT EXCEL & PDF
+    ========================================================================*/
+    function exportData(type) {
+      if(currentTableData.length === 0) return Toast.fire({icon: 'warning', title: 'Tidak ada data untuk diexport'});
+      const exportKeys = (SCHEMAS[AppState.currentView] && SCHEMAS[AppState.currentView].cols) || Object.keys(currentTableData[0]).filter(k => k !== '_rowIndex');
+      const cleanData = currentTableData.map(row => {
+        let obj = {};
+        exportKeys.forEach(k => {
+          if (k in row) {
+            let val = row[k];
+            if(typeof val === 'string' && val.startsWith("'")) val = val.substring(1);
+            obj[k] = val;
+          }
+        });
+        return obj;
+      });
+      
+      const fileName = `Laporan_SIPKS_${new Date().toISOString().split('T')[0]}`;
+      
+      if (type === 'excel') {
+        const ws = XLSX.utils.json_to_sheet(cleanData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Data");
+        XLSX.writeFile(wb, `${fileName}.xlsx`);
+      } 
+      else if (type === 'pdf') {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF('landscape');
+        doc.setFontSize(16);
+        doc.text("Laporan Sistem Informasi - PT. Cipta Karya Palma", 14, 15);
+        doc.setFontSize(10);
+        doc.text(`Dicetak pada: ${new Date().toLocaleString('id-ID')}`, 14, 22);
+        
+        const pdfData = cleanData.map(row => { const copy = {...row}; if ('Hasil_Rupiah' in copy) copy.Hasil_Rupiah = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(copy.Hasil_Rupiah) || 0); if ('Harga_Per_Kg' in copy) copy.Harga_Per_Kg = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(copy.Harga_Per_Kg) || 0) + ' / kg'; return copy; });
+        const columns = Object.keys(pdfData[0]).map(k => ({header: k.replace(/_/g, ' '), dataKey: k}));
+        doc.autoTable({ 
+            columns: columns, 
+            body: pdfData, 
+            startY: 30, 
+            styles: { fontSize: 8 }, 
+            headStyles: { fillColor: [200, 150, 46] }
+        });
+        doc.save(`${fileName}.pdf`);
+      }
+    }
+
+    window.onload = initApp;
+  </script>
+</body>
+</html>
