@@ -1,52 +1,52 @@
-/**
- * SIPKS — Cloudflare Pages Function: /api
- * Google Apps Script remains the backend; Google Spreadsheet remains the database.
- * Configure Pages variable GAS_WEB_APP_URL with the Apps Script Web App URL ending /exec.
- */
-const ALLOWED_ACTIONS = new Set([
-  'login', 'register', 'req_otp', 'reset_pass',
-  'get_dashboard', 'get_data', 'insert_data', 'update_data', 'delete_data'
-]);
+const GAS_URL = "https://script.google.com/macros/s/AKfycbwH1JFOA1cpWaie7rE1mA5GFdStlqZHy2FBW0Q0I2wA8aKzAA_F1IpvCXUKPOSrba_wXA/exec";
 
-function json(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0' }
-  });
+export async function onRequest(context) {
+  const { request } = context;
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: corsHeaders() });
+  }
+  if (request.method !== "POST") {
+    return json({ status: false, message: "Gunakan metode POST untuk API SIPKS.", data: null }, 405);
+  }
+  try {
+    const body = await request.text();
+    let parsedBody;
+    try { parsedBody = JSON.parse(body); }
+    catch (_) { return json({ status: false, message: "Request JSON tidak valid.", data: null }, 400); }
+    if (String(parsedBody.action || "").toLowerCase() === "setup") {
+      return json({ status: false, message: "Aksi setup hanya boleh dijalankan manual dari editor Apps Script.", data: null }, 403);
+    }
+    // Server-side proxy avoids browser CORS issues; GAS remains the source of truth.
+    const upstream = await fetch(GAS_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json;charset=UTF-8" },
+      body,
+      redirect: "follow"
+    });
+    const text = await upstream.text();
+    let parsed;
+    try { parsed = JSON.parse(text); }
+    catch (_) {
+      return json({ status: false, message: "Google Apps Script tidak mengembalikan JSON. Pastikan doPost dipasang dan deployment Apps Script diperbarui.", data: null, upstreamStatus: upstream.status }, 502);
+    }
+    return json(parsed, upstream.ok ? 200 : upstream.status);
+  } catch (err) {
+    return json({ status: false, message: "Proxy Cloudflare gagal menghubungi Apps Script: " + (err && err.message ? err.message : String(err)), data: null }, 502);
+  }
 }
 
-export async function onRequest({ request, env }) {
-  if (request.method === 'GET') {
-    const configured = Boolean(String(env.GAS_WEB_APP_URL || '').trim());
-    return json({ status: true, message: 'SIPKS Pages API aktif.', data: { online: true, configured } });
-  }
-  if (request.method !== 'POST') return json({ status: false, message: 'Metode tidak diizinkan.', data: null }, 405);
+function corsHeaders() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Cache-Control": "no-store"
+  };
+}
 
-  const gasUrl = String(env.GAS_WEB_APP_URL || '').trim();
-  if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(gasUrl)) {
-    return json({ status: false, message: 'GAS_WEB_APP_URL belum benar. Masukkan URL Web App Apps Script yang berakhir /exec.', data: null }, 500);
-  }
-
-  let body;
-  try { body = await request.json(); }
-  catch (_) { return json({ status: false, message: 'Body permintaan harus berupa JSON valid.', data: null }, 400); }
-  if (!body || !ALLOWED_ACTIONS.has(String(body.action || ''))) {
-    return json({ status: false, message: 'Aksi API tidak diizinkan.', data: null }, 403);
-  }
-
-  try {
-    const upstream = await fetch(gasUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(body),
-      redirect: 'follow'
-    });
-    const raw = await upstream.text();
-    let result;
-    try { result = JSON.parse(raw); }
-    catch (_) { return json({ status: false, message: 'Apps Script mengembalikan respons bukan JSON. Periksa deployment Web App dan aksesnya.', data: null }, 502); }
-    return json(result, upstream.ok ? 200 : 502);
-  } catch (_) {
-    return json({ status: false, message: 'Tidak dapat terhubung ke backend Google Apps Script.', data: null }, 502);
-  }
+function json(value, status = 200) {
+  return new Response(JSON.stringify(value), {
+    status,
+    headers: { ...corsHeaders(), "Content-Type": "application/json; charset=utf-8" }
+  });
 }
