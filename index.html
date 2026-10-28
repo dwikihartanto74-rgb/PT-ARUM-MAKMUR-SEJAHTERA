@@ -144,6 +144,43 @@
       0% { background-position: 200% 0; }
       100% { background-position: -200% 0; }
     }
+
+    /* RESPONSIVE SIPKS: fullscreen auth + mobile offcanvas sidebar */
+    html, body { width: 100%; max-width: 100%; min-height: 100%; }
+    body { min-height: 100vh; min-height: 100dvh; }
+    #app { min-width: 0; min-height: 100vh; min-height: 100dvh; }
+    .auth-screen { min-height: 100vh; min-height: 100dvh; width: 100%; }
+    .auth-stage { min-height: calc(100vh - 56px); min-height: calc(100dvh - 56px); }
+    .sipks-sidebar { height: 100vh; height: 100dvh; max-height: 100vh; max-height: 100dvh; }
+    .sipks-sidebar-nav { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+    .sipks-sidebar-footer { flex: 0 0 auto; margin-top: auto; padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+    .sipks-mobile-overlay { position: fixed; inset: 0; background: rgba(20, 24, 32, .55); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); z-index: 39; }
+    .sipks-mobile-drawer { position: fixed !important; inset: 0 auto 0 0; z-index: 40 !important; width: min(82vw, 320px) !important; height: 100vh !important; height: 100dvh !important; max-height: 100vh !important; max-height: 100dvh !important; display: flex !important; transform: translateX(-105%); transition: transform .25s ease; box-shadow: 16px 0 40px rgba(0,0,0,.18); }
+    .sipks-mobile-drawer.is-open { transform: translateX(0); }
+    .sipks-mobile-drawer .sipks-sidebar-nav { min-height: 0; overflow-y: auto; }
+    .sipks-mobile-header { position: sticky; top: 0; flex: 0 0 auto; padding-top: max(.75rem, env(safe-area-inset-top)); }
+    body.sipks-drawer-open { overflow: hidden; }
+    @media (max-width: 767px) {
+      body { font-size: 14px; }
+      .auth-screen { justify-content: flex-start; }
+      .auth-stage { width: 100%; flex: 1 0 auto; padding: max(1.25rem, env(safe-area-inset-top)) 0 1.25rem !important; }
+      .auth-panel { width: 100%; max-width: none; min-height: calc(100dvh - 56px - env(safe-area-inset-top)); padding: 1.5rem 1.25rem !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; background: rgba(255,255,255,.58) !important; }
+      .auth-panel .logo-container { width: 112px; max-width: 112px; }
+      .auth-panel .text-center.mb-8 { margin-bottom: 1.5rem; }
+      .auth-panel input { min-height: 46px; font-size: 16px; }
+      .auth-panel .grid.grid-cols-2 { grid-template-columns: minmax(0, 1fr); gap: .75rem; }
+      .auth-footer { padding-bottom: max(.85rem, env(safe-area-inset-bottom)); }
+      #app { overflow-x: clip; }
+      .sipks-main { width: 100%; min-width: 0; min-height: 100dvh; }
+      .sipks-content { min-width: 0; overflow-x: auto; }
+      .sipks-mobile-header { display: flex; align-items: center; justify-content: flex-start !important; gap: .75rem; }
+      .sipks-mobile-header .sipks-brand-title { margin-left: .15rem; }
+      .sipks-mobile-drawer .sipks-sidebar-footer { padding-bottom: max(1.25rem, env(safe-area-inset-bottom)); }
+    }
+    @media (min-width: 768px) {
+      .sipks-mobile-drawer { position: relative !important; inset: auto; width: 18rem !important; height: 100dvh !important; transform: none !important; box-shadow: none; }
+      .sipks-mobile-overlay { display: none !important; }
+    }
   </style>
 </head>
 <body class="antialiased min-h-screen flex text-sm sm:text-base">
@@ -177,33 +214,34 @@
       </svg>
     `;
 
-    // API bridge: Cloudflare Pages Function (/api) meneruskan request ke Google Apps Script.
-    // Jalur ini tetap memakai apiController yang sama agar aturan login/role/CRUD tidak berubah.
-    const apiCall = async (action, table = null, payload = null, options = {}) => {
-      if (!options.silent) showLoader();
-      try {
-        const response = await fetch('/api', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: AppState.token, action, table, payload })
-        });
-        const raw = await response.text();
-        let res;
-        try { res = JSON.parse(raw); }
-        catch (_) { throw new Error('Respons API bukan JSON. Periksa doPost Apps Script dan deployment backend.'); }
-        if (!response.ok) throw new Error(res.message || `Permintaan API gagal (${response.status}).`);
-        if (!res || typeof res.status !== 'boolean') throw new Error('Respons server tidak valid. Periksa endpoint /api.');
-        if (res.data && res.data.logout) {
-          doLogout();
-          throw new Error(res.message || 'Sesi berakhir. Silakan login kembali.');
+    const apiCall = (action, table = null, payload = null, options = {}) => {
+      return new Promise((resolve, reject) => {
+        if (!options.silent) showLoader();
+        if (typeof google === 'undefined' || !google.script || !google.script.run) {
+          if (!options.silent) hideLoader();
+          reject("Google Apps Script tidak tersedia. Buka aplikasi melalui URL Web App /exec.");
+          return;
         }
-        if (!res.status) throw new Error(res.message || 'Permintaan tidak berhasil.');
-        return res.data !== null && res.data !== undefined ? res.data : res.message;
-      } catch (err) {
-        throw (err instanceof Error ? err : new Error(String(err || 'Terjadi kesalahan saat menghubungi server.')));
-      } finally {
-        if (!options.silent) hideLoader();
-      }
+        google.script.run
+          .withSuccessHandler(res => {
+            if (!options.silent) hideLoader();
+            if (!res || typeof res.status !== 'boolean') {
+              reject("Respons server tidak valid. Periksa fungsi apiController dan deployment Apps Script.");
+            } else if (res.data && res.data.logout) {
+              doLogout();
+              reject(res.message || "Sesi berakhir. Silakan login kembali.");
+            } else if (!res.status) {
+              reject(res.message || "Permintaan tidak berhasil.");
+            } else {
+              resolve(res.data !== null && res.data !== undefined ? res.data : res.message);
+            }
+          })
+          .withFailureHandler(err => {
+            if (!options.silent) hideLoader();
+            reject((err && err.message) || "Terjadi kesalahan saat menghubungi Google Apps Script.");
+          })
+          .apiController({ token: AppState.token, action, table, payload });
+      });
     };
 
     function normalizeRoleClient(role) {
@@ -219,15 +257,14 @@
     function canOperateAdmin() {
       return ['Admin', 'Operator', 'Developer'].includes(normalizeRoleClient(AppState.user && AppState.user.role));
     }
-
     const showLoader = () => {
-      const loader = document.getElementById('global-loader');
-      if (loader) loader.classList.remove('hidden');
+    const loader = document.getElementById('global-loader');
+    // if (loader) loader.classList.remove('hidden');
     };
-    
+
     const hideLoader = () => {
-      const loader = document.getElementById('global-loader');
-      if (loader) loader.classList.add('hidden');
+    const loader = document.getElementById('global-loader');
+    if (loader) loader.classList.add('hidden');
     };
 
     const Toast = Swal.mixin({
@@ -252,9 +289,9 @@
       const app = document.getElementById('app');
 
       app.innerHTML = `
-        <div class="w-full min-h-screen flex flex-col justify-between">
-          <div class="flex-1 w-full flex items-center justify-center p-4 py-10">
-            <div class="login-card w-full max-w-md p-8 page-transition mx-auto relative">
+        <div class="auth-screen w-full min-h-screen flex flex-col justify-between">
+          <div class="auth-stage flex-1 w-full flex items-center justify-center p-4 py-10">
+            <div class="login-card auth-panel w-full max-w-md p-8 page-transition mx-auto relative">
               <div class="text-center mb-8">
                 <div class="logo-container mb-4">
                   ${logoSvg}
@@ -331,7 +368,7 @@
             </div>
           </div>
           
-          <footer class="w-full py-4 text-center bg-[#2E2E2E]">
+          <footer class="auth-footer w-full py-4 text-center bg-[#2E2E2E]">
             <p class="text-white text-xs sm:text-sm font-medium tracking-wide">© 2026 PT. Cipta Karya Palma . All Rights Reserved.</p>
           </footer>
         </div>
@@ -442,8 +479,10 @@
       }
 
       document.getElementById('app').innerHTML = `
-        <!-- Sidebar -->
-        <aside class="glass w-72 h-full flex-shrink-0 flex flex-col hidden md:flex z-10 border-r border-[#E7DCC7]">
+        <!-- Mobile backdrop: closes the drawer when tapped -->
+        <div id="sipks-mobile-overlay" class="sipks-mobile-overlay hidden md:hidden" onclick="closeSipksSidebar()" aria-hidden="true"></div>
+        <!-- Sidebar: desktop is in-flow; mobile is an offcanvas overlay -->
+        <aside id="sipks-sidebar" class="sipks-sidebar sipks-mobile-drawer glass w-72 flex-shrink-0 flex flex-col border-r border-[#E7DCC7]">
           <div class="p-6 flex items-center gap-3 border-b border-[#E7DCC7]">
             <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-[#C8962E] to-[#D8B867] flex items-center justify-center text-xl shadow-lg shadow-[#C8962E]/20">
               <i class="fas fa-leaf text-white"></i>
@@ -454,13 +493,13 @@
             </div>
           </div>
           
-          <div class="p-4 flex-1 overflow-y-auto">
+          <div class="sipks-sidebar-nav p-4">
             <ul class="space-y-1">
               ${menus}
             </ul>
           </div>
           
-          <div class="p-4 border-t border-[#E7DCC7]">
+          <div class="sipks-sidebar-footer p-4 border-t border-[#E7DCC7]">
             <div class="flex items-center gap-3 mb-4 px-2">
               <div class="w-10 h-10 rounded-full bg-[#EFE6D4] flex items-center justify-center border border-[#E7DCC7]">
                 <i class="fas fa-user text-[#C8962E]"></i>
@@ -477,15 +516,15 @@
         </aside>
 
         <!-- Main Content -->
-        <main class="flex-1 h-full overflow-hidden flex flex-col relative z-0">
-          <!-- Mobile Header -->
-          <header class="md:hidden glass p-4 flex justify-between items-center z-20">
-            <h2 class="font-bold text-lg text-[#2E2E2E]">SIPKS</h2>
-            <button onclick="document.querySelector('aside').classList.toggle('hidden')" class="text-[#707070] p-2"><i class="fas fa-bars text-xl"></i></button>
+        <main class="sipks-main flex-1 min-w-0 h-screen h-[100dvh] overflow-hidden flex flex-col relative z-0">
+          <!-- Mobile Header: hamburger stays at the top-left -->
+          <header class="sipks-mobile-header md:hidden glass p-4 z-20">
+            <button type="button" aria-label="Buka menu" aria-controls="sipks-sidebar" aria-expanded="false" onclick="toggleSipksSidebar()" class="text-[#707070] p-2 rounded-lg hover:bg-[#E7DCC7]/60 focus:outline-none focus:ring-2 focus:ring-[#C8962E]"><i class="fas fa-bars text-xl"></i></button>
+            <h2 class="sipks-brand-title font-bold text-lg text-[#2E2E2E]">SIPKS</h2>
           </header>
           
           <!-- Content Area -->
-          <div id="main-content" class="flex-1 overflow-y-auto p-4 md:p-8 page-transition">
+          <div id="main-content" class="sipks-content flex-1 min-h-0 overflow-y-auto p-4 md:p-8 page-transition">
             <!-- Dynamic Content Injected Here -->
           </div>
           
@@ -499,31 +538,52 @@
     }
 
     /*========================================================================
+      MOBILE SIDEBAR OFFCANVAS HELPERS
+    ========================================================================*/
+    function toggleSipksSidebar(forceOpen) {
+      const sidebar = document.getElementById('sipks-sidebar');
+      const overlay = document.getElementById('sipks-mobile-overlay');
+      if (!sidebar || !overlay) return;
+      const shouldOpen = typeof forceOpen === 'boolean' ? forceOpen : !sidebar.classList.contains('is-open');
+      sidebar.classList.toggle('is-open', shouldOpen);
+      overlay.classList.toggle('hidden', !shouldOpen);
+      document.body.classList.toggle('sipks-drawer-open', shouldOpen);
+      document.querySelectorAll('[aria-controls="sipks-sidebar"]').forEach(btn => btn.setAttribute('aria-expanded', String(shouldOpen)));
+    }
+    function closeSipksSidebar() { toggleSipksSidebar(false); }
+    function closeSipksSidebarOnDesktop() {
+      if (window.matchMedia('(min-width: 768px)').matches) closeSipksSidebar();
+    }
+    window.addEventListener('resize', closeSipksSidebarOnDesktop);
+
+    /*========================================================================
       USER ROLE EXCLUSIVE DASHBOARD (AMS PROFILE & LIVE TBS PRICES)
     ========================================================================*/
     function renderUserDashboard() {
       document.getElementById('app').innerHTML = `
-        <aside class="glass w-64 min-h-screen flex-shrink-0 flex flex-col border-r border-[#E7DCC7]">
+        <div id="sipks-mobile-overlay" class="sipks-mobile-overlay hidden md:hidden" onclick="closeSipksSidebar()" aria-hidden="true"></div>
+        <aside id="sipks-sidebar" class="sipks-sidebar sipks-mobile-drawer glass w-64 flex-shrink-0 flex flex-col border-r border-[#E7DCC7]">
           <div class="p-5 flex items-center gap-3 border-b border-[#E7DCC7]">
             <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-[#C8962E] to-[#D8B867] flex items-center justify-center text-xl shadow-lg"><i class="fas fa-leaf text-white"></i></div>
             <div><h2 class="font-bold text-lg text-[#2E2E2E]">SIPKS</h2><p class="text-xs text-[#707070]">PT. Cipta Karya Palma</p></div>
           </div>
-          <nav class="p-4 flex-1">
+          <nav class="sipks-sidebar-nav p-4">
             <p class="px-3 mb-3 text-xs font-bold uppercase tracking-wider text-[#D8B867]">Informasi</p>
-            <a href="javascript:void(0)" onclick="fetchLiveHargaTbsForUser()" class="flex items-center gap-3 px-4 py-3 rounded-xl bg-[#D8B867]/30 border border-[#C8962E]/30 text-[#2E2E2E]"><i class="fas fa-tags w-5 text-[#C8962E]"></i> Harga TBS</a>
+            <a href="javascript:void(0)" onclick="closeSipksSidebar(); fetchLiveHargaTbsForUser()" class="flex items-center gap-3 px-4 py-3 rounded-xl bg-[#D8B867]/30 border border-[#C8962E]/30 text-[#2E2E2E]"><i class="fas fa-tags w-5 text-[#C8962E]"></i> Harga TBS</a>
           </nav>
-          <div class="p-4 border-t border-[#E7DCC7]">
+          <div class="sipks-sidebar-footer p-4 border-t border-[#E7DCC7]">
             <p class="text-sm font-semibold text-[#2E2E2E] truncate">${AppState.user.username}</p>
             <p class="text-xs text-[#C8962E] mb-4">USER · Akses Harga TBS</p>
             <button onclick="doLogout()" class="w-full py-2 px-4 rounded-lg bg-red-500/10 text-red-500 border border-red-500/20 flex items-center justify-center gap-2"><i class="fas fa-sign-out-alt"></i> Logout</button>
           </div>
         </aside>
-        <main class="flex-1 min-w-0 min-h-screen bg-[#F8F3E8]">
-          <header class="bg-white/90 border-b border-[#E7DCC7] px-6 py-5">
-            <h1 class="text-2xl font-bold text-[#2E2E2E]"><i class="fas fa-tags text-[#C8962E] mr-2"></i>Harga TBS</h1>
-            <p class="text-sm text-[#707070] mt-1">Informasi harga terbaru yang diperbarui oleh pengelola.</p>
+        <main class="sipks-main flex-1 min-w-0 min-h-screen bg-[#F8F3E8] flex flex-col overflow-hidden">
+          <header class="sipks-mobile-header flex items-center gap-3 bg-white/90 border-b border-[#E7DCC7] px-4 md:px-6 py-4 md:py-5">
+            <button type="button" aria-label="Buka menu" aria-controls="sipks-sidebar" aria-expanded="false" onclick="toggleSipksSidebar()" class="md:hidden text-[#707070] p-2 rounded-lg hover:bg-[#E7DCC7]/60"><i class="fas fa-bars text-xl"></i></button>
+            <div class="min-w-0"><h1 class="text-xl md:text-2xl font-bold text-[#2E2E2E]"><i class="fas fa-tags text-[#C8962E] mr-2"></i>Harga TBS</h1>
+            <p class="text-sm text-[#707070] mt-1">Informasi harga terbaru yang diperbarui oleh pengelola.</p></div>
           </header>
-          <section class="p-5 md:p-8 max-w-5xl">
+          <section class="sipks-content flex-1 min-h-0 overflow-y-auto p-4 md:p-8 max-w-5xl w-full">
             <div class="glass p-6 md:p-8 rounded-2xl border border-[#E7DCC7] shadow-lg">
               <div class="flex items-center justify-between gap-3 mb-6">
                 <div class="flex items-center gap-3"><div class="p-3 bg-[#C8962E]/10 text-[#C8962E] rounded-xl"><i class="fas fa-dollar-sign text-xl"></i></div><div><h2 class="text-lg font-bold text-[#2E2E2E]">Harga TBS Terbaru</h2><p class="text-xs text-[#707070]">Data langsung dari Spreadsheet</p></div></div>
@@ -595,6 +655,7 @@
 
     function navigate(view) {
       if (isUserRole()) { renderUserDashboard(); return; }
+      closeSipksSidebar();
       AppState.currentView = view;
       document.querySelectorAll('aside a').forEach(el => {
         el.classList.remove('bg-[#D8B867]/30', 'text-[#2E2E2E]', 'border', 'border-[#C8962E]/30');
@@ -692,8 +753,8 @@
       UNIVERSAL TABLE HANDLER (CRUD) for SIPKS
     ========================================================================*/
     const SCHEMAS = {
-      penerimaan: { table: 'Penerimaan_Sawit', title: 'Penerimaan Sawit', icon: 'fa-inbox', cols: ['ID_Penerimaan', 'Tanggal', 'No_Kendaraan', 'Supplier', 'Status_Verifikasi'], form: ['Tanggal', 'No_Kendaraan', 'Nama_Sopir', 'Supplier', 'Asal_Estate', 'Asal_Divisi', 'Asal_Blok', 'Status_Verifikasi'] },
-      timbangan: { table: 'Timbangan', title: 'Data Timbangan', icon: 'fa-balance-scale', cols: ['ID_Penerimaan', 'Waktu_Masuk', 'Bruto_Kg', 'Tare_Kg', 'Netto_Kg', 'Potongan_Persen', 'Netto_Bersih_Kg', 'Harga_Per_Kg', 'Hasil_Rupiah', 'Status'], form: ['ID_Penerimaan', 'Waktu_Masuk', 'Bruto_Kg', 'Tare_Kg', 'Potongan_Persen', 'Harga_Per_Kg', 'Hasil_Rupiah', 'Status'] },
+      penerimaan: { table: 'Penerimaan_Sawit', title: 'Penerimaan Sawit', icon: 'fa-inbox', cols: ['ID_Penerimaan', 'Tanggal', 'No_Kendaraan', 'Supplier', 'Status_Verifikasi'], form: ['Tanggal', 'No_Kendaraan', 'Nama_Sopir', 'Supplier', 'Asal_Estate', 'Asal_Divisi', 'Asal_Blok'] },
+      timbangan: { table: 'Timbangan', title: 'Data Timbangan', icon: 'fa-balance-scale', cols: ['ID_Timbangan', 'ID_Penerimaan', 'Bruto_Kg', 'Tare_Kg', 'Netto_Bersih_Kg'], form: ['ID_Penerimaan', 'Bruto_Kg', 'Tare_Kg', 'Potongan_Persen'] },
       transportasi: { table: 'Transportasi', title: 'Data Transportasi', icon: 'fa-truck', cols: ['No_Kendaraan', 'Jenis_Kendaraan', 'Nama_Sopir', 'Status_Kendaraan'], form: ['No_Kendaraan', 'Jenis_Kendaraan', 'Nama_Sopir', 'No_HP', 'Status_Kendaraan'] },
       estate: { table: 'Estate', title: 'Data Estate', icon: 'fa-seedling', cols: ['Kode_Estate', 'Nama_Estate', 'Manajer'], form: ['Kode_Estate', 'Nama_Estate', 'Manajer', 'Luas_Ha', 'Lokasi'] },
       divisi: { table: 'Divisi', title: 'Data Divisi', icon: 'fa-layer-group', cols: ['Kode_Divisi', 'Kode_Estate', 'Nama_Divisi', 'Asisten'], form: ['Kode_Divisi', 'Kode_Estate', 'Nama_Divisi', 'Asisten'] },
@@ -804,10 +865,7 @@
       data.slice().reverse().forEach((row, idx) => {
         let tr = `<tr><td class="text-center text-[#2E2E2E]">${idx + 1}</td>`;
         schema.cols.forEach(col => {
-          let val = (row[col] !== undefined && row[col] !== null && row[col] !== '') ? row[col] : '-';
-          if (viewKey === 'timbangan' && col === 'Waktu_Masuk' && val !== '-') val = String(val).replace('T', ' ');
-          if (viewKey === 'timbangan' && (col === 'Harga_Per_Kg' || col === 'Hasil_Rupiah') && val !== '-') val = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(val) || 0);
-          if (viewKey === 'timbangan' && col === 'Harga_Per_Kg' && val !== '-') val += ' / kg';
+          let val = row[col] || '-';
           if(col === 'Status' || col === 'Status_Verifikasi') {
             let color = val === 'Pending' ? 'bg-yellow-100 text-yellow-600' : 
                         val === 'Aktif' || val === 'Terverifikasi' || val === 'Berlaku' ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600';
@@ -848,29 +906,25 @@
 
       schema.form.forEach(field => {
         let type = 'text';
-        let val = rowData[field] ?? '';
-        if (viewKey === 'timbangan' && field === 'Harga_Per_Kg' && (val === '' || val === null)) val = 3000;
-        if (viewKey === 'timbangan' && field === 'Hasil_Rupiah' && (val === '' || val === null)) val = 0;
+        let val = rowData[field] || '';
         let readonly = '';
         
         if (typeof val === 'string' && val.startsWith("'")) val = val.substring(1);
 
         if (field.includes('Tanggal')) { type = 'date'; if(!val) val = new Date().toISOString().split('T')[0]; }
-        else if (field === 'Waktu_Masuk') { type = 'datetime-local'; if (val) val = String(val).replace(' ', 'T').substring(0,16); else val = new Date(Date.now() - new Date().getTimezoneOffset()*60000).toISOString().substring(0,16); }
-        else if (field.includes('Kg') || field.includes('Persen') || field.includes('Luas') || field.includes('Tahun') || field === 'Harga' || field === 'Harga_Per_Kg' || field === 'Hasil_Rupiah') type = 'number';
+        else if (field.includes('Kg') || field.includes('Persen') || field.includes('Luas') || field.includes('Tahun') || field === 'Harga') type = 'number';
         
         if (field.includes('ID_')) readonly = rowIndex ? 'readonly' : ''; 
 
         if (field === 'Status' || field === 'Status_Verifikasi' || field === 'Status_Kendaraan') {
-            let statusOptions = ['Pending', 'Aktif', 'Nonaktif'];
-            if (viewKey === 'penerimaan' && field === 'Status_Verifikasi') statusOptions = ['Pending', 'Diterima', 'Ditolak'];
-            if (viewKey === 'timbangan' && field === 'Status') statusOptions = ['Pending', 'Sukses', 'Batal'];
-            if (viewKey === 'hargatbs' && field === 'Status') statusOptions = ['Berlaku', 'Tidak Berlaku'];
             fieldsHtml += `
               <div>
                 <label class="block text-xs mb-1 text-[#707070] font-semibold">${field.replace(/_/g, ' ')}</label>
                 <select id="inp_${field}" class="luxury-input w-full px-3 py-2 rounded-lg text-sm" ${readonly}>
-                  ${statusOptions.map(option => `<option value="${option}" ${String(val)===option?'selected':''}>${option}</option>`).join('')}
+                  <option value="Pending" ${val==='Pending'?'selected':''}>Pending</option>
+                  <option value="Terverifikasi" ${val==='Terverifikasi'?'selected':''}>Terverifikasi / Aktif</option>
+                  <option value="Berlaku" ${val==='Berlaku'?'selected':''}>Berlaku</option>
+                  <option value="Nonaktif" ${val==='Nonaktif'?'selected':''}>Ditolak / Nonaktif</option>
                 </select>
               </div>`;
         } else if (field === 'Role' && viewKey === 'users') {
@@ -891,36 +945,16 @@
               </div>`;
         } else {
             let inputModeHTML = (field.includes('HP') || field.includes('Tahun') || field.includes('Kg')) ? `inputmode="numeric"` : '';
-            const computedField = viewKey === 'timbangan' && field === 'Hasil_Rupiah';
             fieldsHtml += `
-              <div class="${computedField ? 'md:col-span-2 rounded-xl border border-[#D8B867] bg-[#FBF6E9] p-3' : ''}">
+              <div>
                 <label class="block text-xs mb-1 text-[#707070] font-semibold">${field.replace(/_/g, ' ')}</label>
-                <input type="${type}" id="inp_${field}" value="${val}" ${inputModeHTML} class="luxury-input w-full px-3 py-2 rounded-lg text-sm ${computedField ? 'font-bold text-[#8A641B]' : ''}" ${readonly} ${computedField ? 'readonly' : ''} ${computedField || (viewKey === 'timbangan' && field === 'ID_Penerimaan') ? '' : 'required'}>
-                ${computedField ? '<p id="hasilRupiahLabel" class="mt-2 text-sm font-semibold text-[#8A641B]">Estimasi hasil: Rp0</p><p class="text-xs text-[#707070] mt-1">Harga per kg × netto bersih. Nilai dihitung otomatis dan disimpan bersama data timbangan.</p>' : ''}
+                <input type="${type}" id="inp_${field}" value="${val}" ${inputModeHTML} class="luxury-input w-full px-3 py-2 rounded-lg text-sm" ${readonly} required>
               </div>`;
         }
       });
       
       formFields.innerHTML = fieldsHtml;
-      if (viewKey === 'timbangan') {
-        ['Bruto_Kg','Tare_Kg','Potongan_Persen','Harga_Per_Kg'].forEach(id => { const el = document.getElementById('inp_' + id); if (el) el.addEventListener('input', updateTimbanganEstimate); });
-        updateTimbanganEstimate();
-      }
       modal.classList.remove('hidden');
-    }
-
-    function updateTimbanganEstimate() {
-      const bruto = Number(document.getElementById('inp_Bruto_Kg')?.value) || 0;
-      const tare = Number(document.getElementById('inp_Tare_Kg')?.value) || 0;
-      const potongan = Math.max(0, Math.min(100, Number(document.getElementById('inp_Potongan_Persen')?.value) || 0));
-      const harga = Number(document.getElementById('inp_Harga_Per_Kg')?.value) || 0;
-      const netto = Math.max(0, bruto - tare);
-      const nettoBersih = netto * (1 - potongan / 100);
-      const hasil = Math.round(nettoBersih * harga);
-      const result = document.getElementById('inp_Hasil_Rupiah');
-      const label = document.getElementById('hasilRupiahLabel');
-      if (result) result.value = hasil;
-      if (label) label.textContent = 'Estimasi hasil: ' + new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(hasil);
     }
 
     function closeModal() {
@@ -954,11 +988,7 @@
         }
         closeModal();
         Toast.fire({icon: 'success', title: msg});
-        await loadTableView(viewKey);
-        // Muat statistik terbaru setelah penyimpanan berhasil. Jika Dashboard sedang aktif,
-        // perbarui kartu dan grafik langsung; bila sedang di menu lain, data akan dimuat saat Dashboard dibuka.
-        if (AppState.currentView === 'dashboard') await loadDashboard(selectedChartPeriod, true);
-        else apiCall('get_dashboard', null, { period: selectedChartPeriod }, { silent: true }).catch(err => console.warn('Sinkronisasi statistik:', err));
+        loadTableView(viewKey);
       } catch(err) {
         Swal.fire('Error', err, 'error');
       }
@@ -986,15 +1016,14 @@
     ========================================================================*/
     function exportData(type) {
       if(currentTableData.length === 0) return Toast.fire({icon: 'warning', title: 'Tidak ada data untuk diexport'});
-      const exportKeys = (SCHEMAS[AppState.currentView] && SCHEMAS[AppState.currentView].cols) || Object.keys(currentTableData[0]).filter(k => k !== '_rowIndex');
       const cleanData = currentTableData.map(row => {
         let obj = {};
-        exportKeys.forEach(k => {
-          if (k in row) {
-            let val = row[k];
-            if(typeof val === 'string' && val.startsWith("'")) val = val.substring(1);
-            obj[k] = val;
-          }
+        Object.keys(row).forEach(k => { 
+           if(k !== '_rowIndex') {
+               let val = row[k];
+               if(typeof val === 'string' && val.startsWith("'")) val = val.substring(1);
+               obj[k] = val; 
+           }
         });
         return obj;
       });
@@ -1015,11 +1044,10 @@
         doc.setFontSize(10);
         doc.text(`Dicetak pada: ${new Date().toLocaleString('id-ID')}`, 14, 22);
         
-        const pdfData = cleanData.map(row => { const copy = {...row}; if ('Hasil_Rupiah' in copy) copy.Hasil_Rupiah = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(copy.Hasil_Rupiah) || 0); if ('Harga_Per_Kg' in copy) copy.Harga_Per_Kg = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(copy.Harga_Per_Kg) || 0) + ' / kg'; return copy; });
-        const columns = Object.keys(pdfData[0]).map(k => ({header: k.replace(/_/g, ' '), dataKey: k}));
+        const columns = Object.keys(cleanData[0]).map(k => ({header: k.replace(/_/g, ' '), dataKey: k}));
         doc.autoTable({ 
             columns: columns, 
-            body: pdfData, 
+            body: cleanData, 
             startY: 30, 
             styles: { fontSize: 8 }, 
             headStyles: { fillColor: [200, 150, 46] }
@@ -1032,3 +1060,5 @@
   </script>
 </body>
 </html>
+
+
