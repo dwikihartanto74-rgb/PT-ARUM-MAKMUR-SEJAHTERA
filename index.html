@@ -214,34 +214,68 @@
       </svg>
     `;
 
-    const apiCall = (action, table = null, payload = null, options = {}) => {
-      return new Promise((resolve, reject) => {
-        if (!options.silent) showLoader();
-        if (typeof google === 'undefined' || !google.script || !google.script.run) {
-          if (!options.silent) hideLoader();
-          reject("Google Apps Script tidak tersedia. Buka aplikasi melalui URL Web App /exec.");
-          return;
+    const apiCall = async (action, table = null, payload = null, options = {}) => {
+      if (!options.silent) showLoader();
+      try {
+        const requestData = { token: AppState.token, action, table, payload };
+
+        // Apps Script Web App: gunakan google.script.run jika halaman dibuka dari /exec.
+        if (typeof google !== 'undefined' && google.script && google.script.run) {
+          const res = await new Promise((resolve, reject) => {
+            google.script.run
+              .withSuccessHandler(resolve)
+              .withFailureHandler(err => reject((err && err.message) || 'Terjadi kesalahan saat menghubungi Google Apps Script.'))
+              .apiController(requestData);
+          });
+
+          if (!res || typeof res.status !== 'boolean') {
+            throw new Error('Respons server tidak valid. Periksa apiController dan deployment Apps Script.');
+          }
+          if (res.data && res.data.logout) {
+            doLogout();
+            throw new Error(res.message || 'Sesi berakhir. Silakan login kembali.');
+          }
+          if (!res.status) throw new Error(res.message || 'Permintaan tidak berhasil.');
+          return res.data !== null && res.data !== undefined ? res.data : res.message;
         }
-        google.script.run
-          .withSuccessHandler(res => {
-            if (!options.silent) hideLoader();
-            if (!res || typeof res.status !== 'boolean') {
-              reject("Respons server tidak valid. Periksa fungsi apiController dan deployment Apps Script.");
-            } else if (res.data && res.data.logout) {
-              doLogout();
-              reject(res.message || "Sesi berakhir. Silakan login kembali.");
-            } else if (!res.status) {
-              reject(res.message || "Permintaan tidak berhasil.");
-            } else {
-              resolve(res.data !== null && res.data !== undefined ? res.data : res.message);
-            }
-          })
-          .withFailureHandler(err => {
-            if (!options.silent) hideLoader();
-            reject((err && err.message) || "Terjadi kesalahan saat menghubungi Google Apps Script.");
-          })
-          .apiController({ token: AppState.token, action, table, payload });
-      });
+
+        // Cloudflare Pages: kirim permintaan melalui Pages Function di /api.
+        const response = await fetch('/api', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestData),
+          cache: 'no-store'
+        });
+
+        const responseText = await response.text();
+        let res;
+        try {
+          res = JSON.parse(responseText);
+        } catch (_) {
+          throw new Error('API /api tidak mengembalikan JSON. Periksa functions/api.js, URL GAS_WEB_APP_URL, dan deployment Apps Script.');
+        }
+
+        if (!response.ok) {
+          throw new Error(res.message || ('Permintaan API gagal (HTTP ' + response.status + ').'));
+        }
+        if (!res || typeof res.status !== 'boolean') {
+          // Beberapa proxy dapat membungkus hasil API; terima bentuk standar success hanya jika status belum tersedia.
+          if (res && typeof res.success === 'boolean') {
+            if (!res.success) throw new Error(res.message || 'Permintaan API tidak berhasil.');
+            res = { status: true, message: res.message, data: res.data };
+          } else {
+            throw new Error('Respons API tidak sesuai format yang diharapkan. Pastikan doPost mengembalikan {status, message, data}.');
+          }
+        }
+        if (res.data && res.data.logout) {
+          doLogout();
+          throw new Error(res.message || 'Sesi berakhir. Silakan login kembali.');
+        }
+        if (!res.status) throw new Error(res.message || 'Permintaan tidak berhasil.');
+        return res.data !== null && res.data !== undefined ? res.data : res.message;
+      } finally {
+        if (!options.silent) hideLoader();
+      }
     };
 
     function normalizeRoleClient(role) {
@@ -257,6 +291,7 @@
     function canOperateAdmin() {
       return ['Admin', 'Operator', 'Developer'].includes(normalizeRoleClient(AppState.user && AppState.user.role));
     }
+
     const showLoader = () => {
     const loader = document.getElementById('global-loader');
     // if (loader) loader.classList.remove('hidden');
