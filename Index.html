@@ -177,54 +177,48 @@
       </svg>
     `;
 
-    const apiCall = (action, table = null, payload = null) => {
-      return new Promise((resolve, reject) => {
-        showLoader();
-        const finish = () => hideLoader();
-        const handleResponse = (res) => {
-          finish();
-          if (!res || typeof res.status !== 'boolean') {
-            reject('Respons server tidak valid. Periksa endpoint API dan deployment Apps Script.');
-            return;
-          }
-          if (res.data && res.data.logout) {
-            doLogout();
-            reject(res.message || 'Sesi berakhir. Silakan login kembali.');
-          } else if (!res.status) {
-            reject(res.message || 'Permintaan gagal diproses.');
-          } else {
-            resolve(res.data !== null && res.data !== undefined ? res.data : res.message);
-          }
-        };
-
-        // Google Apps Script hosting
-        if (typeof google !== 'undefined' && google.script && google.script.run) {
-          google.script.run
-            .withSuccessHandler(handleResponse)
-            .withFailureHandler(err => { finish(); reject(err && err.message ? err.message : 'Terjadi kesalahan jaringan.'); })
-            .apiController({ token: AppState.token, action, table, payload: payload || {} });
-          return;
-        }
-
-        // Cloudflare Pages hosting: /api proxies to the same Apps Script backend.
-        fetch('/api', {
+    // API bridge: Cloudflare Pages Function (/api) meneruskan request ke Google Apps Script.
+    // Jalur ini tetap memakai apiController yang sama agar aturan login/role/CRUD tidak berubah.
+    const apiCall = async (action, table = null, payload = null, options = {}) => {
+      if (!options.silent) showLoader();
+      try {
+        const response = await fetch('/api', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          cache: 'no-store',
-          body: JSON.stringify({ token: AppState.token, action, table, payload: payload || {} })
-        })
-          .then(async response => {
-            const text = await response.text();
-            let parsed;
-            try { parsed = JSON.parse(text); }
-            catch (_) { throw new Error('Respons /api bukan JSON. Periksa Cloudflare Function dan URL Web App Apps Script.'); }
-            if (!response.ok && parsed && !parsed.message) throw new Error('Server API gagal (' + response.status + ').');
-            return parsed;
-          })
-          .then(handleResponse)
-          .catch(err => { finish(); reject(err && err.message ? err.message : String(err)); });
-      });
+          body: JSON.stringify({ token: AppState.token, action, table, payload })
+        });
+        const raw = await response.text();
+        let res;
+        try { res = JSON.parse(raw); }
+        catch (_) { throw new Error('Respons API bukan JSON. Periksa doPost Apps Script dan deployment backend.'); }
+        if (!response.ok) throw new Error(res.message || `Permintaan API gagal (${response.status}).`);
+        if (!res || typeof res.status !== 'boolean') throw new Error('Respons server tidak valid. Periksa endpoint /api.');
+        if (res.data && res.data.logout) {
+          doLogout();
+          throw new Error(res.message || 'Sesi berakhir. Silakan login kembali.');
+        }
+        if (!res.status) throw new Error(res.message || 'Permintaan tidak berhasil.');
+        return res.data !== null && res.data !== undefined ? res.data : res.message;
+      } catch (err) {
+        throw (err instanceof Error ? err : new Error(String(err || 'Terjadi kesalahan saat menghubungi server.')));
+      } finally {
+        if (!options.silent) hideLoader();
+      }
     };
+
+    function normalizeRoleClient(role) {
+      const value = String(role || '').trim().toUpperCase();
+      if (value === 'USER' || value === 'PENGGUNA') return 'USER';
+      if (value === 'OPERATOR' || value === 'OPERATOR BARU') return 'Operator';
+      if (value === 'ADMIN') return 'Admin';
+      if (value === 'DEVELOPER') return 'Developer';
+      if (value === 'MANAGER') return 'Manager';
+      return String(role || '').trim();
+    }
+    function isUserRole() { return normalizeRoleClient(AppState.user && AppState.user.role) === 'USER'; }
+    function canOperateAdmin() {
+      return ['Admin', 'Operator', 'Developer'].includes(normalizeRoleClient(AppState.user && AppState.user.role));
+    }
 
     const showLoader = () => {
       const loader = document.getElementById('global-loader');
@@ -249,7 +243,6 @@
       if (AppState.token && savedUser) {
         AppState.user = JSON.parse(savedUser);
         renderLayout();
-        startLiveSync();
       } else {
         renderAuth();
       }
@@ -306,6 +299,7 @@
                     <input type="password" id="reg_password" required class="luxury-input w-full px-4 py-3 text-sm rounded-xl" placeholder="Password">
                     <input type="password" id="reg_conf" required class="luxury-input w-full px-4 py-3 text-sm rounded-xl" placeholder="Ulangi Password">
                   </div>
+                  <p class="text-xs text-[#707070] mb-4">Pendaftaran mandiri hanya membuat akun USER. Akses Operator ditetapkan secara manual oleh pengelola melalui kolom Role di Spreadsheet.</p>
                   <button type="submit" class="w-full btn-login py-3 font-semibold text-lg">
                     Daftar Sekarang
                   </button>
@@ -358,7 +352,6 @@
           localStorage.setItem('sipks_user', JSON.stringify(res.user));
           Toast.fire({icon: 'success', title: 'Login Berhasil'});
           renderLayout();
-          startLiveSync();
           
         } else if (mode === 'register') {
           const pass = document.getElementById('reg_password').value;
@@ -401,7 +394,7 @@
     }
 
     function doLogout() {
-      if (liveSyncTimer) { clearInterval(liveSyncTimer); liveSyncTimer = null; }
+      if (window.sipksRealtimeTimer) { clearInterval(window.sipksRealtimeTimer); window.sipksRealtimeTimer = null; }
       localStorage.removeItem('sipks_token');
       localStorage.removeItem('sipks_user');
       AppState.user = null;
@@ -414,13 +407,15 @@
     ========================================================================*/
     function renderLayout() {
       // PERIKSA ROLE USER KONTRAK
-      if (AppState.user && AppState.user.role === 'USER') {
+      if (AppState.user) AppState.user.role = normalizeRoleClient(AppState.user.role);
+      if (isUserRole()) {
         renderUserDashboard();
         return;
       }
 
-      const isAdmin = AppState.user.role === 'Admin';
-      const isOperator = AppState.user.role === 'Operator';
+      const isAdmin = normalizeRoleClient(AppState.user.role) === 'Admin';
+      const isOperator = normalizeRoleClient(AppState.user.role) === 'Operator';
+      const hasAdminMenus = isAdmin || isOperator || normalizeRoleClient(AppState.user.role) === 'Developer';
 
       let menus = `
         <li class="mb-2"><a href="javascript:void(0)" onclick="navigate('dashboard')" id="nav-dashboard" class="flex items-center px-4 py-3 rounded-lg hover:bg-[#E7DCC7]/50 transition group text-[#707070]"><i class="fas fa-home w-6 group-hover:text-[#C8962E]"></i> Dashboard</a></li>
@@ -438,7 +433,7 @@
         <li class="mb-2"><a href="javascript:void(0)" onclick="navigate('hargatbs')" id="nav-hargatbs" class="flex items-center px-4 py-3 rounded-lg hover:bg-[#E7DCC7]/50 transition group text-[#707070]"><i class="fas fa-tags w-6 group-hover:text-[#C8962E]"></i> Harga TBS</a></li>
       `;
 
-      if (isAdmin) {
+      if (hasAdminMenus) {
         menus += `
           <div class="mt-4 mb-2 px-4 text-xs font-semibold text-[#D8B867] uppercase tracking-wider">Pengaturan</div>
           <li class="mb-2"><a href="javascript:void(0)" onclick="navigate('users')" id="nav-users" class="flex items-center px-4 py-3 rounded-lg hover:bg-[#E7DCC7]/50 transition group text-[#C8962E]"><i class="fas fa-users-cog w-6"></i> Manajemen User</a></li>
@@ -508,136 +503,51 @@
     ========================================================================*/
     function renderUserDashboard() {
       document.getElementById('app').innerHTML = `
-        <div class="w-full min-h-screen flex flex-col justify-between bg-[#F8F3E8] page-transition">
-          
-          <!-- Exclusive Minimalist Luxury Header -->
-          <header class="bg-white/90 backdrop-blur-md border-b border-[#E7DCC7] py-4 px-6 sticky top-0 z-40 shadow-sm">
-            <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-              
-              <div class="flex items-center gap-3">
-                <div class="w-14 h-14 flex items-center justify-center">
-                  ${logoSvg}
-                </div>
-                <div>
-                  <h1 class="text-xl font-bold text-[#2E2E2E] tracking-tight">PT. ARUM MAKMUR SEJAHTERA</h1>
-                  <p class="text-xs text-[#707070]">Sistem Layanan Mandiri Kemitraan TBS</p>
-                </div>
+        <aside class="glass w-64 min-h-screen flex-shrink-0 flex flex-col border-r border-[#E7DCC7]">
+          <div class="p-5 flex items-center gap-3 border-b border-[#E7DCC7]">
+            <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-[#C8962E] to-[#D8B867] flex items-center justify-center text-xl shadow-lg"><i class="fas fa-leaf text-white"></i></div>
+            <div><h2 class="font-bold text-lg text-[#2E2E2E]">SIPKS</h2><p class="text-xs text-[#707070]">PT. Cipta Karya Palma</p></div>
+          </div>
+          <nav class="p-4 flex-1">
+            <p class="px-3 mb-3 text-xs font-bold uppercase tracking-wider text-[#D8B867]">Informasi</p>
+            <a href="javascript:void(0)" onclick="fetchLiveHargaTbsForUser()" class="flex items-center gap-3 px-4 py-3 rounded-xl bg-[#D8B867]/30 border border-[#C8962E]/30 text-[#2E2E2E]"><i class="fas fa-tags w-5 text-[#C8962E]"></i> Harga TBS</a>
+          </nav>
+          <div class="p-4 border-t border-[#E7DCC7]">
+            <p class="text-sm font-semibold text-[#2E2E2E] truncate">${AppState.user.username}</p>
+            <p class="text-xs text-[#C8962E] mb-4">USER · Akses Harga TBS</p>
+            <button onclick="doLogout()" class="w-full py-2 px-4 rounded-lg bg-red-500/10 text-red-500 border border-red-500/20 flex items-center justify-center gap-2"><i class="fas fa-sign-out-alt"></i> Logout</button>
+          </div>
+        </aside>
+        <main class="flex-1 min-w-0 min-h-screen bg-[#F8F3E8]">
+          <header class="bg-white/90 border-b border-[#E7DCC7] px-6 py-5">
+            <h1 class="text-2xl font-bold text-[#2E2E2E]"><i class="fas fa-tags text-[#C8962E] mr-2"></i>Harga TBS</h1>
+            <p class="text-sm text-[#707070] mt-1">Informasi harga terbaru yang diperbarui oleh pengelola.</p>
+          </header>
+          <section class="p-5 md:p-8 max-w-5xl">
+            <div class="glass p-6 md:p-8 rounded-2xl border border-[#E7DCC7] shadow-lg">
+              <div class="flex items-center justify-between gap-3 mb-6">
+                <div class="flex items-center gap-3"><div class="p-3 bg-[#C8962E]/10 text-[#C8962E] rounded-xl"><i class="fas fa-dollar-sign text-xl"></i></div><div><h2 class="text-lg font-bold text-[#2E2E2E]">Harga TBS Terbaru</h2><p class="text-xs text-[#707070]">Data langsung dari Spreadsheet</p></div></div>
+                <button onclick="fetchLiveHargaTbsForUser()" class="p-3 bg-[#EFE6D4] hover:bg-[#E7DCC7] rounded-lg" title="Muat ulang"><i class="fas fa-sync-alt"></i></button>
               </div>
-
-              <div class="flex items-center gap-4">
-                <div class="text-right hidden sm:block">
-                  <p class="text-sm font-semibold text-[#2E2E2E]">User: ${AppState.user.username}</p>
-                  <p class="text-xs text-[#C8962E] font-semibold"><i class="fas fa-info-circle mr-1"></i> Mode View-Only</p>
-                </div>
-                <button onclick="doLogout()" class="px-4 py-2 bg-red-500/10 hover:bg-red-500 text-red-600 hover:text-white border border-red-200 hover:border-transparent text-xs font-semibold rounded-full transition duration-300">
-                  <i class="fas fa-sign-out-alt mr-1"></i> Keluar
-                </button>
+              <div class="text-center py-8 bg-white/70 rounded-2xl border border-[#E7DCC7] mb-5">
+                <p class="text-xs font-bold text-[#707070] uppercase mb-2">Tanggal Berlaku</p>
+                <p id="live-tbs-tanggal" class="text-base font-semibold text-[#2E2E2E] mb-6">Memuat...</p>
+                <p class="text-xs font-bold text-[#707070] uppercase mb-2">Harga TBS (Rp/Kg)</p>
+                <h3 id="live-tbs-harga" class="text-4xl md:text-5xl font-black text-[#C8962E]">Rp -</h3>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-[#E7DCC7] pt-5 text-sm">
+                <div class="flex justify-between gap-3"><span class="text-[#707070]">Diperbarui pada</span><span id="live-tbs-updated" class="font-semibold text-[#2E2E2E] text-right">-</span></div>
+                <div class="flex justify-between gap-3"><span class="text-[#707070]">Status harga</span><span id="live-tbs-status" class="px-3 py-1 rounded-full text-xs font-bold bg-[#EFE6D4]">Memuat...</span></div>
               </div>
             </div>
-          </header>
-
-          <!-- Content Grid -->
-          <main class="flex-1 max-w-7xl w-full mx-auto p-4 lg:p-6 grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-            
-            <!-- SECTION 1: PROFIL PT. ARUM MAKMUR SEJAHTERA (Left 2-Col Grid) -->
-            <section class="lg:col-span-2 space-y-6">
-              <div class="login-card p-6 border border-[#E7DCC7] shadow-lg">
-                <div class="flex items-center gap-3 border-b border-[#E7DCC7] pb-4 mb-4">
-                  <div class="p-2.5 bg-[#C8962E]/10 text-[#C8962E] rounded-xl">
-                    <i class="fas fa-building text-xl"></i>
-                  </div>
-                  <h2 class="text-lg font-bold tracking-wide text-[#2E2E2E]">Profil Perusahaan</h2>
-                </div>
-                
-                <div class="space-y-4 text-[#2E2E2E] text-sm sm:text-base leading-relaxed text-justify">
-                  <p>
-                    PT. Arum Makmur Sejahtera Jambi merupakan salah satu perusahaan penjualan minyak kelapa sawit yang ada di daerah Jambi yang bertanggung jawab dalam pengolahan dari sawit menjadi minyak kelapa. Perusahaan ini didirikan pada tahun 2019 oleh Bapak Suminta yang beralamatkan di Jl. Wahyu No.33, Beringin, The Hok, Kec. Jambi Sel., Kota Jambi, Jambi 36138.
-                  </p>
-                  <p>
-                    PT. Arum Makmur Sejahtera Jambi didirikan dengan maksud untuk memenuhi kebutuhan konsumen akan minyak kelapa sawit dan memperoleh keuntungan dari penjualan tersebut, tentunya menggunakan strategi yang baik, salah satunya dengan menjalin hubungan yang baik dengan konsumen dan memberikan minyak kelapa sawit yang merupakan hasil olahan dari kelapa sawit dengan kualitas yang terbaik. Karena dengan adanya hubungan yang baik dan produk yang berkualitas maka dapat meningkatkan omset penjualan dan memberikan keuntungan yang lebih bagi perusahaan.
-                  </p>
-                </div>
-
-                <!-- Vision and Mission Card Layout -->
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
-                  <div class="p-4 bg-[#EFE6D4]/40 rounded-xl border border-[#E7DCC7]">
-                    <h3 class="text-sm font-bold uppercase tracking-wider text-[#C8962E] mb-2"><i class="fas fa-eye mr-2"></i>Visi:</h3>
-                    <ul class="list-disc list-inside space-y-1.5 text-xs sm:text-sm text-[#2E2E2E]">
-                      <li>Perkebunan kelapa sawit yang tumbuh berkembang dan tangguh</li>
-                      <li>Menghasilkan minyak sawit yang baik dan berkualitas.</li>
-                    </ul>
-                  </div>
-                  <div class="p-4 bg-[#EFE6D4]/40 rounded-xl border border-[#E7DCC7]">
-                    <h3 class="text-sm font-bold uppercase tracking-wider text-[#D8B867] mb-2"><i class="fas fa-rocket mr-2"></i>Misi:</h3>
-                    <ul class="list-disc list-inside space-y-1.5 text-xs sm:text-sm text-[#2E2E2E]">
-                      <li>Meningkatkan pendapatan asli daerah.</li>
-                      <li>Menciptakan lapangan kerja.</li>
-                      <li>Mempertahankan dan memelihara kelestarian lingkungan.</li>
-                      <li>Memanfaatkan teknologi yang berwawasan ramah lingkungan.</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <!-- SECTION 2: LIVE TBS PRICING CARD -->
-            <section class="space-y-6">
-              <div class="login-card p-6 border border-[#E7DCC7] shadow-lg flex flex-col justify-between">
-                <div>
-                  <div class="flex items-center justify-between border-b border-[#E7DCC7] pb-4 mb-6">
-                    <div class="flex items-center gap-3">
-                      <div class="p-2.5 bg-[#C8962E]/10 text-[#C8962E] rounded-xl">
-                        <i class="fas fa-dollar-sign text-xl"></i>
-                      </div>
-                      <h2 class="text-lg font-bold tracking-wide text-[#2E2E2E]">Harga TBS Hari Ini</h2>
-                    </div>
-                    <button onclick="fetchLiveHargaTbsForUser()" class="p-2 bg-[#EFE6D4] hover:bg-[#E7DCC7] rounded-lg text-[#2E2E2E] transition duration-200" title="Muat Ulang Harga">
-                      <i class="fas fa-sync-alt"></i>
-                    </button>
-                  </div>
-
-                  <!-- Price Display Area -->
-                  <div class="text-center py-6 bg-white/70 rounded-2xl border border-[#E7DCC7] p-4 mb-4">
-                    <p class="text-xs font-bold text-[#707070] uppercase tracking-wider mb-1">Tanggal Berlaku</p>
-                    <p id="live-tbs-tanggal" class="text-sm sm:text-base font-semibold text-[#2E2E2E] mb-4">-</p>
-                    
-                    <p class="text-xs font-bold text-[#707070] uppercase tracking-wider mb-1">Harga TBS (Rp/Kg)</p>
-                    <!-- Giant Price Font -->
-                    <h3 id="live-tbs-harga" class="text-4xl sm:text-5xl font-black text-[#C8962E] tracking-tight drop-shadow-sm">
-                      Rp -
-                    </h3>
-                  </div>
-                </div>
-
-                <!-- Update Status & Timestamp -->
-                <div class="space-y-3 mt-4 border-t border-[#E7DCC7] pt-4 text-xs sm:text-sm">
-                  <div class="flex justify-between items-center">
-                    <span class="text-[#707070]">Diperbarui Pada:</span>
-                    <span id="live-tbs-updated" class="font-medium text-[#2E2E2E]">-</span>
-                  </div>
-                  <div class="flex justify-between items-center">
-                    <span class="text-[#707070]">Status Harga:</span>
-                    <span id="live-tbs-status" class="px-2.5 py-1 rounded-full text-xs font-bold bg-[#EFE6D4] text-[#2E2E2E]">
-                      Memproses...
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-          </main>
-
-          <!-- Integrated Single Line Dark Footer (Matched) -->
-          <footer class="w-full py-4 text-center bg-[#2E2E2E]">
-            <p class="text-white text-xs sm:text-sm font-medium tracking-wide">© 2026 PT. Cipta Karya Palma . All Rights Reserved.</p>
-          </footer>
-
-        </div>
-      `;
+          </section>
+          <footer class="px-6 py-4 text-center text-xs text-[#707070]">© 2026 PT. Cipta Karya Palma. All Rights Reserved.</footer>
+        </main>`;
       fetchLiveHargaTbsForUser();
+      startRealtimeRefresh();
     }
 
-    function fetchLiveHargaTbsForUser() {
+    function fetchLiveHargaTbsForUser(silent = false) {
       const tglEl = document.getElementById('live-tbs-tanggal');
       const hrgEl = document.getElementById('live-tbs-harga');
       const updEl = document.getElementById('live-tbs-updated');
@@ -646,7 +556,7 @@
       if (!hrgEl) return;
 
       // Panggil endpoint get_data HargaTBS
-      apiCall('get_data', 'HargaTBS')
+      apiCall('get_data', 'HargaTBS', null, { silent })
         .then(data => {
           if (data && data.length > 0) {
             // Ambil row harga tbs yang terakhir diinput admin
@@ -684,6 +594,7 @@
     }
 
     function navigate(view) {
+      if (isUserRole()) { renderUserDashboard(); return; }
       AppState.currentView = view;
       document.querySelectorAll('aside a').forEach(el => {
         el.classList.remove('bg-[#D8B867]/30', 'text-[#2E2E2E]', 'border', 'border-[#C8962E]/30');
@@ -705,127 +616,84 @@
     /*========================================================================
       DASHBOARD VIEW (SIPKS KPIs)
     ========================================================================*/
-    async function loadDashboard() {
-      const container = document.getElementById('main-content');
-      container.innerHTML = `
-        <div class="mb-8 flex justify-between items-end">
-          <div>
-            <h1 class="text-3xl font-bold text-[#2E2E2E] mb-2">Dashboard, ${AppState.user.username}! 👋</h1>
-            <p class="text-[#707070]">Ringkasan operasional PT. Cipta Karya Palma hari ini.</p>
-          </div>
-        </div>
-        
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8" id="dash-cards">
-           <!-- Skeleton Loaders -->
-           <div class="glass p-6 rounded-2xl skeleton h-28"></div>
-           <div class="glass p-6 rounded-2xl skeleton h-28"></div>
-           <div class="glass p-6 rounded-2xl skeleton h-28"></div>
-           <div class="glass p-6 rounded-2xl skeleton h-28"></div>
-        </div>
+    let selectedChartPeriod = 'weekly';
+    let tonaseChartInstance = null;
 
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div class="glass p-6 rounded-2xl">
-            <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-              <h3 class="text-lg font-semibold text-[#2E2E2E]">Grafik Tonase</h3>
-              <div class="flex gap-2">
-                <button type="button" onclick="setTonaseRange('daily')" id="range-daily" class="px-3 py-1.5 rounded-lg border border-[#C8962E] text-xs font-semibold">Harian</button>
-                <button type="button" onclick="setTonaseRange('weekly')" id="range-weekly" class="px-3 py-1.5 rounded-lg border border-[#E7DCC7] text-xs font-semibold">Mingguan</button>
-                <button type="button" onclick="setTonaseRange('monthly')" id="range-monthly" class="px-3 py-1.5 rounded-lg border border-[#E7DCC7] text-xs font-semibold">Bulanan</button>
+    async function loadDashboard(period = selectedChartPeriod, silent = false) {
+      selectedChartPeriod = period;
+      const container = document.getElementById('main-content');
+      if (!container) return;
+      if (!silent || !document.getElementById('tonaseChart')) {
+        container.innerHTML = `
+          <div class="mb-8"><h1 class="text-3xl font-bold text-[#2E2E2E] mb-2">Dashboard, ${AppState.user.username}! 👋</h1><p class="text-[#707070]">Ringkasan operasional berdasarkan data Spreadsheet.</p></div>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8" id="dash-cards">
+            <div class="glass p-6 rounded-2xl skeleton h-28"></div><div class="glass p-6 rounded-2xl skeleton h-28"></div><div class="glass p-6 rounded-2xl skeleton h-28"></div><div class="glass p-6 rounded-2xl skeleton h-28"></div>
+          </div>
+          <div class="glass p-5 md:p-6 rounded-2xl">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
+              <div><h3 class="text-lg font-semibold text-[#2E2E2E]">Grafik Tonase</h3><p class="text-xs text-[#707070]">Berdasarkan Netto Bersih dari menu Timbangan</p></div>
+              <div class="flex flex-wrap gap-2">
+                <button id="period-daily" onclick="loadDashboard('daily')" class="px-4 py-2 rounded-lg border border-[#E7DCC7] text-sm">Harian</button>
+                <button id="period-weekly" onclick="loadDashboard('weekly')" class="px-4 py-2 rounded-lg border border-[#E7DCC7] text-sm">Mingguan</button>
+                <button id="period-monthly" onclick="loadDashboard('monthly')" class="px-4 py-2 rounded-lg border border-[#E7DCC7] text-sm">Bulanan</button>
               </div>
             </div>
-            <canvas id="tonaseChart" height="200"></canvas>
-          </div>
-          <div class="glass p-6 rounded-2xl flex flex-col justify-center">
-             <h3 class="text-lg font-semibold mb-4 text-[#2E2E2E]">Akses Cepat Transaksi</h3>
-             <div class="grid grid-cols-2 gap-4">
-                <button onclick="navigate('penerimaan')" class="glass p-5 rounded-xl flex flex-col items-center gap-3 hover:bg-[#E7DCC7]/50 transition border border-[#E7DCC7]">
-                  <i class="fas fa-inbox text-3xl text-[#C8962E]"></i>
-                  <span class="text-sm font-medium text-[#2E2E2E]">Input Penerimaan</span>
-                </button>
-                <button onclick="navigate('timbangan')" class="glass p-5 rounded-xl flex flex-col items-center gap-3 hover:bg-[#E7DCC7]/50 transition border border-[#E7DCC7]">
-                  <i class="fas fa-balance-scale text-3xl text-[#D8B867]"></i>
-                  <span class="text-sm font-medium text-[#2E2E2E]">Proses Timbangan</span>
-                </button>
-             </div>
-          </div>
-        </div>
-      `;
-
+            <div class="relative w-full" style="height:320px"><canvas id="tonaseChart"></canvas></div>
+          </div>`;
+      }
       try {
-        const stats = await apiCall('get_dashboard');
-        
-        const cardsHtml = `
-          <div class="glass p-6 rounded-2xl border-l-4 border-[#C8962E] relative overflow-hidden group">
-            <div class="absolute right-[-10px] top-[-10px] opacity-[0.03] text-7xl group-hover:scale-110 transition duration-500 text-black"><i class="fas fa-weight-hanging"></i></div>
-            <p class="text-[#707070] text-sm font-medium">Tonase Hari Ini</p>
-            <h3 class="text-3xl font-bold text-[#2E2E2E] mt-2">${stats.tonaseHariIni} <span class="text-sm font-normal text-[#707070]">Ton</span></h3>
-          </div>
-          <div class="glass p-6 rounded-2xl border-l-4 border-[#D8B867] relative overflow-hidden group">
-            <div class="absolute right-[-10px] top-[-10px] opacity-[0.03] text-7xl group-hover:scale-110 transition duration-500 text-black"><i class="fas fa-truck-loading"></i></div>
-            <p class="text-[#707070] text-sm font-medium">Jumlah Antrian</p>
-            <h3 class="text-3xl font-bold text-[#2E2E2E] mt-2">${stats.antrian} <span class="text-sm font-normal text-[#707070]">Kendaraan</span></h3>
-          </div>
-          <div class="glass p-6 rounded-2xl border-l-4 border-[#C8962E] relative overflow-hidden group">
-            <div class="absolute right-[-10px] top-[-10px] opacity-[0.03] text-7xl group-hover:scale-110 transition duration-500 text-black"><i class="fas fa-stopwatch"></i></div>
-            <p class="text-[#707070] text-sm font-medium">OTR (On Time Receiving)</p>
-            <h3 class="text-3xl font-bold text-[#2E2E2E] mt-2">${stats.otr} <span class="text-sm font-normal text-[#707070]">%</span></h3>
-          </div>
-          <div class="glass p-6 rounded-2xl border-l-4 border-[#D8B867] relative overflow-hidden group">
-            <div class="absolute right-[-10px] top-[-10px] opacity-[0.03] text-7xl group-hover:scale-110 transition duration-500 text-black"><i class="fas fa-handshake"></i></div>
-            <p class="text-[#707070] text-sm font-medium">Total Supplier Mitra</p>
-            <h3 class="text-3xl font-bold text-[#2E2E2E] mt-2">${stats.totalSupplier}</h3>
-          </div>
-        `;
-        document.getElementById('dash-cards').innerHTML = cardsHtml;
-
-        AppState.dashboardStats = stats;
-        renderTonaseChart(dashboardChartRange);
+        const stats = await apiCall('get_dashboard', null, { period: selectedChartPeriod }, { silent });
+        const cards = document.getElementById('dash-cards');
+        if (cards) cards.innerHTML = `
+          <div class="glass p-6 rounded-2xl border-l-4 border-[#C8962E]"><p class="text-[#707070] text-sm font-medium">Tonase Hari Ini</p><h3 id="metric-tonase" class="text-3xl font-bold text-[#2E2E2E] mt-2">${stats.tonaseHariIni} Ton</h3></div>
+          <div class="glass p-6 rounded-2xl border-l-4 border-[#D8B867]"><p class="text-[#707070] text-sm font-medium">Jumlah Antrian</p><h3 id="metric-antrian" class="text-3xl font-bold text-[#2E2E2E] mt-2">${stats.antrian} Kendaraan</h3></div>
+          <div class="glass p-6 rounded-2xl border-l-4 border-[#C8962E]"><p class="text-[#707070] text-sm font-medium">OTR (On Time Receiving)</p><h3 id="metric-otr" class="text-3xl font-bold text-[#2E2E2E] mt-2">${stats.otr} %</h3></div>
+          <div class="glass p-6 rounded-2xl border-l-4 border-[#D8B867]"><p class="text-[#707070] text-sm font-medium">Total Supplier Mitra</p><h3 id="metric-supplier" class="text-3xl font-bold text-[#2E2E2E] mt-2">${stats.totalSupplier}</h3></div>`;
+        ['daily','weekly','monthly'].forEach(p => {
+          const button = document.getElementById('period-' + p);
+          if (button) button.className = `px-4 py-2 rounded-lg border text-sm ${p === selectedChartPeriod ? 'bg-[#C8962E] text-white border-[#C8962E]' : 'border-[#E7DCC7] text-[#2E2E2E]'}`;
+        });
+        const chartData = stats.chart || { labels: [], values: [] };
+        const canvas = document.getElementById('tonaseChart');
+        if (canvas && typeof Chart !== 'undefined') {
+          if (tonaseChartInstance && tonaseChartInstance.canvas !== canvas) {
+            tonaseChartInstance.destroy();
+            tonaseChartInstance = null;
+          }
+          if (tonaseChartInstance) {
+            tonaseChartInstance.data.labels = chartData.labels || [];
+            tonaseChartInstance.data.datasets[0].data = chartData.values || [];
+            tonaseChartInstance.update('none');
+          } else {
+            tonaseChartInstance = new Chart(canvas.getContext('2d'), {
+              type: 'bar',
+              data: { labels: chartData.labels || [], datasets: [{ label: 'Tonase (Ton)', data: chartData.values || [], backgroundColor: 'rgba(200, 150, 46, 0.6)', borderColor: '#C8962E', borderWidth: 1, borderRadius: 5 }] },
+              options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true } }, scales: { y: { beginAtZero: true, title: { display: true, text: 'Ton' }, grid: { color: 'rgba(0,0,0,0.05)' } }, x: { grid: { display: false } } } }
+            });
+          }
+        }
       } catch (err) {
-        Toast.fire({icon: 'error', title: 'Gagal memuat dashboard: ' + err});
+        if (!silent) Toast.fire({icon: 'error', title: 'Gagal memuat dashboard: ' + err});
+        console.error('Dashboard error:', err);
       }
     }
 
-    let dashboardChartRange = 'daily';
-    let tonaseChartInstance = null;
-
-    function setTonaseRange(range) {
-      dashboardChartRange = range;
-      renderTonaseChart(range);
-    }
-
-    function renderTonaseChart(range) {
-      const canvas = document.getElementById('tonaseChart');
-      const stats = AppState.dashboardStats;
-      if (!canvas || !stats || !stats.grafik) return;
-      const series = stats.grafik[range] || { labels: [], values: [] };
-      ['daily','weekly','monthly'].forEach(key => {
-        const btn = document.getElementById('range-' + key);
-        if (!btn) return;
-        btn.className = key === range
-          ? 'px-3 py-1.5 rounded-lg border border-[#C8962E] bg-[#D8B867]/20 text-xs font-semibold'
-          : 'px-3 py-1.5 rounded-lg border border-[#E7DCC7] text-xs font-semibold';
-      });
-      if (tonaseChartInstance) tonaseChartInstance.destroy();
-      tonaseChartInstance = new Chart(canvas.getContext('2d'), {
-        type: 'bar',
-        data: { labels: series.labels, datasets: [{
-          label: 'Tonase (Ton)', data: series.values,
-          backgroundColor: 'rgba(200, 150, 46, 0.6)', borderColor: '#C8962E',
-          borderWidth: 1, borderRadius: 4
-        }] },
-        options: { responsive: true, maintainAspectRatio: true,
-          plugins: { legend: { display: false } },
-          scales: { y: { beginAtZero: true, title: { display: true, text: 'Ton' }, grid: { color: 'rgba(0,0,0,0.05)' } }, x: { grid: { display: false } } }
-        }
-      });
+    function startRealtimeRefresh() {
+      if (window.sipksRealtimeTimer) clearInterval(window.sipksRealtimeTimer);
+      window.sipksRealtimeTimer = setInterval(() => {
+        if (!AppState.user || document.hidden) return;
+        if (isUserRole()) fetchLiveHargaTbsForUser(true);
+        else if (AppState.currentView === 'dashboard') loadDashboard(selectedChartPeriod, true);
+        else if (SCHEMAS[AppState.currentView]) loadTableView(AppState.currentView, true);
+      }, 10000);
     }
 
     /*========================================================================
       UNIVERSAL TABLE HANDLER (CRUD) for SIPKS
     ========================================================================*/
     const SCHEMAS = {
-      penerimaan: { table: 'Penerimaan_Sawit', title: 'Penerimaan Sawit', icon: 'fa-inbox', cols: ['ID_Penerimaan', 'Tanggal', 'No_Kendaraan', 'Supplier', 'Status_Verifikasi'], form: ['Tanggal', 'No_Kendaraan', 'Nama_Sopir', 'Supplier', 'Asal_Estate', 'Asal_Divisi', 'Asal_Blok'] },
-      timbangan: { table: 'Timbangan', title: 'Data Timbangan', icon: 'fa-balance-scale', cols: ['ID_Timbangan', 'ID_Penerimaan', 'Bruto_Kg', 'Tare_Kg', 'Netto_Bersih_Kg'], form: ['ID_Penerimaan', 'Bruto_Kg', 'Tare_Kg', 'Potongan_Persen'] },
+      penerimaan: { table: 'Penerimaan_Sawit', title: 'Penerimaan Sawit', icon: 'fa-inbox', cols: ['ID_Penerimaan', 'Tanggal', 'No_Kendaraan', 'Supplier', 'Status_Verifikasi'], form: ['Tanggal', 'No_Kendaraan', 'Nama_Sopir', 'Supplier', 'Asal_Estate', 'Asal_Divisi', 'Asal_Blok', 'Status_Verifikasi'] },
+      timbangan: { table: 'Timbangan', title: 'Data Timbangan', icon: 'fa-balance-scale', cols: ['ID_Penerimaan', 'Waktu_Masuk', 'Bruto_Kg', 'Tare_Kg', 'Netto_Kg', 'Potongan_Persen', 'Netto_Bersih_Kg', 'Harga_Per_Kg', 'Hasil_Rupiah', 'Status'], form: ['ID_Penerimaan', 'Waktu_Masuk', 'Bruto_Kg', 'Tare_Kg', 'Potongan_Persen', 'Harga_Per_Kg', 'Hasil_Rupiah', 'Status'] },
       transportasi: { table: 'Transportasi', title: 'Data Transportasi', icon: 'fa-truck', cols: ['No_Kendaraan', 'Jenis_Kendaraan', 'Nama_Sopir', 'Status_Kendaraan'], form: ['No_Kendaraan', 'Jenis_Kendaraan', 'Nama_Sopir', 'No_HP', 'Status_Kendaraan'] },
       estate: { table: 'Estate', title: 'Data Estate', icon: 'fa-seedling', cols: ['Kode_Estate', 'Nama_Estate', 'Manajer'], form: ['Kode_Estate', 'Nama_Estate', 'Manajer', 'Luas_Ha', 'Lokasi'] },
       divisi: { table: 'Divisi', title: 'Data Divisi', icon: 'fa-layer-group', cols: ['Kode_Divisi', 'Kode_Estate', 'Nama_Divisi', 'Asisten'], form: ['Kode_Divisi', 'Kode_Estate', 'Nama_Divisi', 'Asisten'] },
@@ -837,42 +705,26 @@
     };
     
     let currentTableData = [];
-    let currentTableViewKey = null;
-    let liveSyncTimer = null;
 
-    function startLiveSync() {
-      if (liveSyncTimer) clearInterval(liveSyncTimer);
-      liveSyncTimer = setInterval(async () => {
-        if (!AppState.token || !AppState.user) return;
-        try {
-          if (AppState.currentView === 'dashboard') {
-            await loadDashboard();
-          } else if (currentTableViewKey && document.getElementById('formModal')?.classList.contains('hidden')) {
-            const schema = SCHEMAS[currentTableViewKey];
-            if (!schema) return;
-            const data = await apiCall('get_data', schema.table);
-            currentTableData = data;
-            const role = AppState.user.role;
-            renderTableRows(currentTableViewKey, data, !schema.readonly && (role === 'Admin' || role === 'Operator'), !schema.readonly && role === 'Admin');
-            const search = document.getElementById('searchInput');
-            if (search && search.value) filterTable();
-          }
-        } catch (err) {
-          console.warn('Sinkronisasi berkala SIPKS gagal:', err);
-        }
-      }, 7000);
-    }
-
-    async function loadTableView(viewKey) {
-      currentTableViewKey = viewKey;
+    async function loadTableView(viewKey, silent = false) {
       const schema = SCHEMAS[viewKey];
       if (!schema) return;
-      if (schema.isAdminOnly && AppState.user.role !== 'Admin') return;
+      if (isUserRole()) { renderUserDashboard(); return; }
+      if (schema.isAdminOnly && !canOperateAdmin()) return;
 
-      const role = AppState.user.role;
+      const role = normalizeRoleClient(AppState.user.role);
+      if (silent) {
+        try {
+          const latest = await apiCall('get_data', schema.table, null, { silent: true });
+          currentTableData = latest;
+          const body = document.getElementById('tableBody');
+          if (body && AppState.currentView === viewKey) renderTableRows(viewKey, latest, role === 'Admin' || role === 'Operator' || role === 'Developer', role === 'Admin' || role === 'Operator' || role === 'Developer');
+        } catch (err) { console.warn('Sinkronisasi tabel gagal:', err); }
+        return;
+      }
       const canAdd = !schema.readonly && (role === 'Admin' || role === 'Operator');
       const canEdit = !schema.readonly && (role === 'Admin' || role === 'Operator');
-      const canDelete = !schema.readonly && role === 'Admin';
+      const canDelete = !schema.readonly && (role === 'Admin' || role === 'Operator' || role === 'Developer');
 
       const container = document.getElementById('main-content');
       container.innerHTML = `
@@ -952,7 +804,10 @@
       data.slice().reverse().forEach((row, idx) => {
         let tr = `<tr><td class="text-center text-[#2E2E2E]">${idx + 1}</td>`;
         schema.cols.forEach(col => {
-          let val = row[col] || '-';
+          let val = (row[col] !== undefined && row[col] !== null && row[col] !== '') ? row[col] : '-';
+          if (viewKey === 'timbangan' && col === 'Waktu_Masuk' && val !== '-') val = String(val).replace('T', ' ');
+          if (viewKey === 'timbangan' && (col === 'Harga_Per_Kg' || col === 'Hasil_Rupiah') && val !== '-') val = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(val) || 0);
+          if (viewKey === 'timbangan' && col === 'Harga_Per_Kg' && val !== '-') val += ' / kg';
           if(col === 'Status' || col === 'Status_Verifikasi') {
             let color = val === 'Pending' ? 'bg-yellow-100 text-yellow-600' : 
                         val === 'Aktif' || val === 'Terverifikasi' || val === 'Berlaku' ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600';
@@ -993,26 +848,29 @@
 
       schema.form.forEach(field => {
         let type = 'text';
-        let val = rowData[field] || '';
+        let val = rowData[field] ?? '';
+        if (viewKey === 'timbangan' && field === 'Harga_Per_Kg' && (val === '' || val === null)) val = 3000;
+        if (viewKey === 'timbangan' && field === 'Hasil_Rupiah' && (val === '' || val === null)) val = 0;
         let readonly = '';
         
         if (typeof val === 'string' && val.startsWith("'")) val = val.substring(1);
 
         if (field.includes('Tanggal')) { type = 'date'; if(!val) val = new Date().toISOString().split('T')[0]; }
-        else if (field.includes('Kg') || field.includes('Persen') || field.includes('Luas') || field.includes('Tahun') || field === 'Harga') type = 'number';
+        else if (field === 'Waktu_Masuk') { type = 'datetime-local'; if (val) val = String(val).replace(' ', 'T').substring(0,16); else val = new Date(Date.now() - new Date().getTimezoneOffset()*60000).toISOString().substring(0,16); }
+        else if (field.includes('Kg') || field.includes('Persen') || field.includes('Luas') || field.includes('Tahun') || field === 'Harga' || field === 'Harga_Per_Kg' || field === 'Hasil_Rupiah') type = 'number';
         
         if (field.includes('ID_')) readonly = rowIndex ? 'readonly' : ''; 
 
         if (field === 'Status' || field === 'Status_Verifikasi' || field === 'Status_Kendaraan') {
+            let statusOptions = ['Pending', 'Aktif', 'Nonaktif'];
+            if (viewKey === 'penerimaan' && field === 'Status_Verifikasi') statusOptions = ['Pending', 'Diterima', 'Ditolak'];
+            if (viewKey === 'timbangan' && field === 'Status') statusOptions = ['Pending', 'Sukses', 'Batal'];
+            if (viewKey === 'hargatbs' && field === 'Status') statusOptions = ['Berlaku', 'Tidak Berlaku'];
             fieldsHtml += `
               <div>
                 <label class="block text-xs mb-1 text-[#707070] font-semibold">${field.replace(/_/g, ' ')}</label>
                 <select id="inp_${field}" class="luxury-input w-full px-3 py-2 rounded-lg text-sm" ${readonly}>
-                  <option value="Pending" ${val==='Pending'?'selected':''}>Pending</option>
-                  <option value="Aktif" ${val==='Aktif'?'selected':''}>Aktif</option>
-                  <option value="Terverifikasi" ${val==='Terverifikasi'?'selected':''}>Terverifikasi</option>
-                  <option value="Berlaku" ${val==='Berlaku'?'selected':''}>Berlaku</option>
-                  <option value="Nonaktif" ${val==='Nonaktif'?'selected':''}>Nonaktif</option>
+                  ${statusOptions.map(option => `<option value="${option}" ${String(val)===option?'selected':''}>${option}</option>`).join('')}
                 </select>
               </div>`;
         } else if (field === 'Role' && viewKey === 'users') {
@@ -1033,25 +891,36 @@
               </div>`;
         } else {
             let inputModeHTML = (field.includes('HP') || field.includes('Tahun') || field.includes('Kg')) ? `inputmode="numeric"` : '';
+            const computedField = viewKey === 'timbangan' && field === 'Hasil_Rupiah';
             fieldsHtml += `
-              <div>
+              <div class="${computedField ? 'md:col-span-2 rounded-xl border border-[#D8B867] bg-[#FBF6E9] p-3' : ''}">
                 <label class="block text-xs mb-1 text-[#707070] font-semibold">${field.replace(/_/g, ' ')}</label>
-                <input type="${type}" id="inp_${field}" value="${val}" ${inputModeHTML} class="luxury-input w-full px-3 py-2 rounded-lg text-sm" ${readonly} required>
+                <input type="${type}" id="inp_${field}" value="${val}" ${inputModeHTML} class="luxury-input w-full px-3 py-2 rounded-lg text-sm ${computedField ? 'font-bold text-[#8A641B]' : ''}" ${readonly} ${computedField ? 'readonly' : ''} ${computedField || (viewKey === 'timbangan' && field === 'ID_Penerimaan') ? '' : 'required'}>
+                ${computedField ? '<p id="hasilRupiahLabel" class="mt-2 text-sm font-semibold text-[#8A641B]">Estimasi hasil: Rp0</p><p class="text-xs text-[#707070] mt-1">Harga per kg × netto bersih. Nilai dihitung otomatis dan disimpan bersama data timbangan.</p>' : ''}
               </div>`;
         }
       });
-
-      if (viewKey === 'users' && !rowIndex) {
-        fieldsHtml += `
-          <div>
-            <label class="block text-xs mb-1 text-[#707070] font-semibold">Password Awal</label>
-            <input type="password" id="inp_Password" minlength="8" autocomplete="new-password" class="luxury-input w-full px-3 py-2 rounded-lg text-sm" required>
-            <p class="text-xs text-[#707070] mt-1">Minimal 8 karakter. Password disimpan dalam bentuk hash.</p>
-          </div>`;
-      }
       
       formFields.innerHTML = fieldsHtml;
+      if (viewKey === 'timbangan') {
+        ['Bruto_Kg','Tare_Kg','Potongan_Persen','Harga_Per_Kg'].forEach(id => { const el = document.getElementById('inp_' + id); if (el) el.addEventListener('input', updateTimbanganEstimate); });
+        updateTimbanganEstimate();
+      }
       modal.classList.remove('hidden');
+    }
+
+    function updateTimbanganEstimate() {
+      const bruto = Number(document.getElementById('inp_Bruto_Kg')?.value) || 0;
+      const tare = Number(document.getElementById('inp_Tare_Kg')?.value) || 0;
+      const potongan = Math.max(0, Math.min(100, Number(document.getElementById('inp_Potongan_Persen')?.value) || 0));
+      const harga = Number(document.getElementById('inp_Harga_Per_Kg')?.value) || 0;
+      const netto = Math.max(0, bruto - tare);
+      const nettoBersih = netto * (1 - potongan / 100);
+      const hasil = Math.round(nettoBersih * harga);
+      const result = document.getElementById('inp_Hasil_Rupiah');
+      const label = document.getElementById('hasilRupiahLabel');
+      if (result) result.value = hasil;
+      if (label) label.textContent = 'Estimasi hasil: ' + new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(hasil);
     }
 
     function closeModal() {
@@ -1074,10 +943,6 @@
            payload[field] = val;
         }
       });
-      if (viewKey === 'users' && !rowIndex) {
-        const passwordInput = document.getElementById('inp_Password');
-        if (passwordInput) payload.Password = passwordInput.value;
-      }
       
       try {
         let msg;
@@ -1088,12 +953,12 @@
           msg = await apiCall('insert_data', schema.table, payload);
         }
         closeModal();
-        Toast.fire({icon: 'success', title: typeof msg === 'string' ? msg : 'Data berhasil disimpan.'});
+        Toast.fire({icon: 'success', title: msg});
         await loadTableView(viewKey);
-        if (viewKey === 'penerimaan' || viewKey === 'timbangan') {
-          // Keep the dashboard totals and charts in sync with the saved transaction.
-          if (AppState.currentView === 'dashboard') await loadDashboard();
-        }
+        // Muat statistik terbaru setelah penyimpanan berhasil. Jika Dashboard sedang aktif,
+        // perbarui kartu dan grafik langsung; bila sedang di menu lain, data akan dimuat saat Dashboard dibuka.
+        if (AppState.currentView === 'dashboard') await loadDashboard(selectedChartPeriod, true);
+        else apiCall('get_dashboard', null, { period: selectedChartPeriod }, { silent: true }).catch(err => console.warn('Sinkronisasi statistik:', err));
       } catch(err) {
         Swal.fire('Error', err, 'error');
       }
@@ -1108,8 +973,8 @@
       if(confirm.isConfirmed) {
         try {
           const msg = await apiCall('delete_data', SCHEMAS[viewKey].table, { _rowIndex: rowIndex });
-          Toast.fire({icon: 'success', title: typeof msg === 'string' ? msg : 'Data berhasil dihapus.'});
-          await loadTableView(viewKey);
+          Toast.fire({icon: 'success', title: msg});
+          loadTableView(viewKey);
         } catch(err) {
           Swal.fire('Error', err, 'error');
         }
@@ -1121,14 +986,15 @@
     ========================================================================*/
     function exportData(type) {
       if(currentTableData.length === 0) return Toast.fire({icon: 'warning', title: 'Tidak ada data untuk diexport'});
+      const exportKeys = (SCHEMAS[AppState.currentView] && SCHEMAS[AppState.currentView].cols) || Object.keys(currentTableData[0]).filter(k => k !== '_rowIndex');
       const cleanData = currentTableData.map(row => {
         let obj = {};
-        Object.keys(row).forEach(k => { 
-           if(k !== '_rowIndex') {
-               let val = row[k];
-               if(typeof val === 'string' && val.startsWith("'")) val = val.substring(1);
-               obj[k] = val; 
-           }
+        exportKeys.forEach(k => {
+          if (k in row) {
+            let val = row[k];
+            if(typeof val === 'string' && val.startsWith("'")) val = val.substring(1);
+            obj[k] = val;
+          }
         });
         return obj;
       });
@@ -1149,10 +1015,11 @@
         doc.setFontSize(10);
         doc.text(`Dicetak pada: ${new Date().toLocaleString('id-ID')}`, 14, 22);
         
-        const columns = Object.keys(cleanData[0]).map(k => ({header: k.replace(/_/g, ' '), dataKey: k}));
+        const pdfData = cleanData.map(row => { const copy = {...row}; if ('Hasil_Rupiah' in copy) copy.Hasil_Rupiah = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(copy.Hasil_Rupiah) || 0); if ('Harga_Per_Kg' in copy) copy.Harga_Per_Kg = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(copy.Harga_Per_Kg) || 0) + ' / kg'; return copy; });
+        const columns = Object.keys(pdfData[0]).map(k => ({header: k.replace(/_/g, ' '), dataKey: k}));
         doc.autoTable({ 
             columns: columns, 
-            body: cleanData, 
+            body: pdfData, 
             startY: 30, 
             styles: { fontSize: 8 }, 
             headStyles: { fillColor: [200, 150, 46] }
