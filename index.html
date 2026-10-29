@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SIPKS - PT. ARUM MAKMUR SEJAHTERA</title>
+  <title>SIPKS - PT. Cipta Karya Palma</title>
   
   <!-- CDN Dependencies -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -243,7 +243,6 @@
 <body class="antialiased min-h-screen flex text-sm sm:text-base">
   <div id="sipks-splash" aria-label="Splash screen PT Arum Makmur Sejahtera">
     <div class="splash-scene" role="img" aria-label="Pemandangan perkebunan kelapa sawit saat matahari terbit"></div>
-    <button class="splash-skip" type="button" onclick="dismissSipksSplash()">Lewati <span aria-hidden="true">›</span></button>
   </div>
 
   <!-- GLOBAL OVERLAY LOADING -->
@@ -354,13 +353,13 @@
     }
 
     const showLoader = () => {
-      const loader = document.getElementById('global-loader');
-      if (loader) loader.classList.remove('hidden');
+    const loader = document.getElementById('global-loader');
+    // if (loader) loader.classList.remove('hidden');
     };
-    
+
     const hideLoader = () => {
-      const loader = document.getElementById('global-loader');
-      if (loader) loader.classList.add('hidden');
+    const loader = document.getElementById('global-loader');
+    if (loader) loader.classList.add('hidden');
     };
 
     const Toast = Swal.mixin({
@@ -849,7 +848,7 @@
     ========================================================================*/
     const SCHEMAS = {
       penerimaan: { table: 'Penerimaan_Sawit', title: 'Penerimaan Sawit', icon: 'fa-inbox', cols: ['ID_Penerimaan', 'Tanggal', 'No_Kendaraan', 'Supplier', 'Status_Verifikasi'], form: ['Tanggal', 'No_Kendaraan', 'Nama_Sopir', 'Supplier', 'Asal_Estate', 'Asal_Divisi', 'Asal_Blok'] },
-      timbangan: { table: 'Timbangan', title: 'Data Timbangan', icon: 'fa-balance-scale', cols: ['ID_Timbangan', 'ID_Penerimaan', 'Bruto_Kg', 'Tare_Kg', 'Netto_Bersih_Kg'], form: ['ID_Penerimaan', 'Bruto_Kg', 'Tare_Kg', 'Potongan_Persen'] },
+      timbangan: { table: 'Timbangan', title: 'Data Timbangan', icon: 'fa-balance-scale', cols: ['ID_Timbangan', 'ID_Penerimaan', 'Bruto_Kg', 'Tare_Kg', 'Netto_Bersih_Kg', 'Harga_Per_Kg', 'Hasil_Rupiah'], form: ['ID_Penerimaan', 'Bruto_Kg', 'Tare_Kg', 'Potongan_Persen', 'Harga_Per_Kg'] },
       transportasi: { table: 'Transportasi', title: 'Data Transportasi', icon: 'fa-truck', cols: ['No_Kendaraan', 'Jenis_Kendaraan', 'Nama_Sopir', 'Status_Kendaraan'], form: ['No_Kendaraan', 'Jenis_Kendaraan', 'Nama_Sopir', 'No_HP', 'Status_Kendaraan'] },
       estate: { table: 'Estate', title: 'Data Estate', icon: 'fa-seedling', cols: ['Kode_Estate', 'Nama_Estate', 'Manajer'], form: ['Kode_Estate', 'Nama_Estate', 'Manajer', 'Luas_Ha', 'Lokasi'] },
       divisi: { table: 'Divisi', title: 'Data Divisi', icon: 'fa-layer-group', cols: ['Kode_Divisi', 'Kode_Estate', 'Nama_Divisi', 'Asisten'], form: ['Kode_Divisi', 'Kode_Estate', 'Nama_Divisi', 'Asisten'] },
@@ -1043,13 +1042,53 @@
             fieldsHtml += `
               <div>
                 <label class="block text-xs mb-1 text-[#707070] font-semibold">${field.replace(/_/g, ' ')}</label>
-                <input type="${type}" id="inp_${field}" value="${val}" ${inputModeHTML} class="luxury-input w-full px-3 py-2 rounded-lg text-sm" ${readonly} required>
+                <input type="${type}" id="inp_${field}" value="${val}" ${inputModeHTML} class="luxury-input w-full px-3 py-2 rounded-lg text-sm" ${readonly} ${field === 'Potongan_Persen' ? '' : 'required'}>
               </div>`;
         }
       });
       
+      if (viewKey === 'timbangan') {
+        fieldsHtml += `
+          <div class="md:col-span-2 rounded-xl border border-[#D8B867]/50 bg-[#FBF6E9] p-4 mt-1">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div><div class="text-xs text-[#707070] mb-1">Netto (Kg)</div><div id="calcNetto" class="font-semibold text-[#2E2E2E]">0 Kg</div></div>
+              <div><div class="text-xs text-[#707070] mb-1">Netto Bersih (Kg)</div><div id="calcNettoBersih" class="font-semibold text-[#2E2E2E]">0 Kg</div></div>
+              <div><div class="text-xs text-[#707070] mb-1">Total Rupiah</div><div id="calcRupiah" class="text-xl font-bold text-[#9A711D]">Rp0</div></div>
+            </div>
+            <p class="text-xs text-[#707070] mt-3">Total dihitung otomatis: Netto Bersih × Harga Sawit per Kg. Potongan persen boleh dikosongkan.</p>
+          </div>`;
+      }
       formFields.innerHTML = fieldsHtml;
+      if (viewKey === 'timbangan') {
+        ['inp_Bruto_Kg','inp_Tare_Kg','inp_Potongan_Persen','inp_Harga_Per_Kg'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.addEventListener('input', updateTimbanganCalculation);
+        });
+        const harga = document.getElementById('inp_Harga_Per_Kg');
+        if (harga && !harga.value) harga.value = '3000';
+        updateTimbanganCalculation();
+      }
       modal.classList.remove('hidden');
+    }
+
+    function formatRupiahSIPKS(value) {
+      return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(value) || 0);
+    }
+
+    function updateTimbanganCalculation() {
+      const bruto = Math.max(0, Number(document.getElementById('inp_Bruto_Kg')?.value) || 0);
+      const tare = Math.max(0, Number(document.getElementById('inp_Tare_Kg')?.value) || 0);
+      const potongan = Math.min(100, Math.max(0, Number(document.getElementById('inp_Potongan_Persen')?.value) || 0));
+      const harga = Math.max(0, Number(document.getElementById('inp_Harga_Per_Kg')?.value) || 0);
+      const netto = Math.max(0, bruto - tare);
+      const nettoBersih = netto * (1 - potongan / 100);
+      const total = Math.round(nettoBersih * harga);
+      const n = document.getElementById('calcNetto');
+      const nb = document.getElementById('calcNettoBersih');
+      const r = document.getElementById('calcRupiah');
+      if (n) n.textContent = netto.toLocaleString('id-ID', {maximumFractionDigits:2}) + ' Kg';
+      if (nb) nb.textContent = nettoBersih.toLocaleString('id-ID', {maximumFractionDigits:2}) + ' Kg';
+      if (r) r.textContent = formatRupiahSIPKS(total);
     }
 
     function closeModal() {
@@ -1066,12 +1105,22 @@
         let el = document.getElementById('inp_' + field);
         if(el) {
            let val = el.value;
+           if (field === 'Potongan_Persen' && String(val).trim() === '') val = '0';
            if(field.includes('HP') || field.includes('Kode') || field.includes('Username')) {
                val = "'" + val;
            }
            payload[field] = val;
         }
       });
+      if (viewKey === 'timbangan') {
+        const bruto = Number(payload.Bruto_Kg) || 0;
+        const tare = Number(payload.Tare_Kg) || 0;
+        const potongan = Math.min(100, Math.max(0, Number(payload.Potongan_Persen) || 0));
+        const harga = Math.max(0, Number(payload.Harga_Per_Kg) || 0);
+        payload.Netto_Kg = bruto - tare;
+        payload.Netto_Bersih_Kg = payload.Netto_Kg * (1 - potongan / 100);
+        payload.Hasil_Rupiah = Math.round(payload.Netto_Bersih_Kg * harga);
+      }
       
       try {
         let msg;
